@@ -1,9 +1,9 @@
 # lasDoscas YouTube Dual Subtitles
 
 <p align="center">
-  <a href="#-简体中文">简体中文</a> | 
-  <a href="#-english">English</a> | 
-  <a href="#-español">Español</a>
+  <a href="#简体中文">简体中文</a> | 
+  <a href="#english">English</a> | 
+  <a href="#español">Español</a>
 </p>
 
 ---
