@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; width: 320px; padding: 10px 14px; margin: 0; background: #f9f9f9; color: #222; transition: background 0.2s, color 0.2s; }
+    
+    ::-webkit-scrollbar {
+      display: none;
+    }
+    body {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .top-bar-left { display: flex; gap: 6px; }
+    .top-bar-right { display: flex; align-items: center; gap: 8px; }
+    .top-btn { background: #ededed; border: none; color: #555; padding: 4px 6px; font-size: 12px; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+    .top-btn:hover { background: #e0e0e0; }
+    #themeToggleBtn { font-size: 18px; line-height: 1; padding: 2px 6px; }
+    #uiLangToggleBtn { font-size: 12px; font-weight: bold; line-height: 1; padding: 2px 6px; }
+    .main-brand { font-size: 13px; font-weight: bold; color: #111; letter-spacing: 0.2px; margin: 0; }
+
+    .divider { border: none; height: 1px; background: #eaeaea; margin: 8px 0; transition: background 0.2s; }
+    
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .section-title { font-size: 12px; font-weight: bold; color: #555; letter-spacing: 0.5px; margin: 0; }
+    
+    .setting-item { margin-bottom: 8px; display: flex; flex-direction: column; }
+    .setting-item > label { font-size: 12px; color: #666; margin-bottom: 4px; display: block; }
+    
+    select, input[type="text"] { padding: 5px 8px; border: none; border-radius: 4px; font-size: 12px; background: #ededed; color: #333; box-sizing: border-box; width: 100%; transition: all 0.2s; }
+    input[type="text"] { font-family: monospace; text-align: center; }
+    input[type="text"]:focus, select:focus { outline: none !important; }
+
+    input[type="range"] { 
+      -webkit-appearance: none; appearance: none;
+      width: 100%; background: transparent; margin: 2px 0; 
+      --track-bg: #e0e0e0; --tick-color: #a0a0a0;
+    }
+    input[type="range"]:focus { outline: none; }
+    input[type="range"]::-webkit-slider-runnable-track { 
+      width: 100%; height: 4px; cursor: pointer; border-radius: 2px; 
+      background: linear-gradient(to right, 
+        var(--track-bg) calc(var(--tick) - 1px), var(--tick-color) calc(var(--tick) - 1px), 
+        var(--tick-color) calc(var(--tick) + 1px), var(--track-bg) calc(var(--tick) + 1px)
+      ); 
+    }
+    input[type="range"]::-webkit-slider-thumb { 
+      -webkit-appearance: none; appearance: none;
+      height: 14px; width: 14px; border-radius: 50%; background: #2196F3; cursor: pointer; margin-top: -5px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); 
+    }
+    
+    .inline-group { display: flex; flex-direction: row; gap: 6px; align-items: center; }
+    .inline-group > * { margin-bottom: 0; }
+    .color-presets { display: flex; gap: 4px; align-items: center; }
+    .preset-color { width: 15px; height: 15px; border-radius: 50%; border: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15); cursor: pointer; padding: 0; box-sizing: border-box; transition: transform 0.1s; }
+    .preset-color:hover { transform: scale(1.2); }
+    
+    .bold-toggle-btn { width: 26px; height: 24px; border: none; background: #ededed; color: #333; font-family: 'Segoe UI', sans-serif; font-weight: bold; font-size: 12px; border-radius: 4px; cursor: pointer; transition: all 0.15s ease; box-sizing: border-box; flex: none; display: flex; justify-content: center; align-items: center; }
+    .bold-toggle-btn:hover { background: #e0e0e0; }
+    .bold-toggle-btn.active { background: #2196F3; color: #fff; box-shadow: inset 0 1px 3px rgba(0,0,0,0.15); }
+
+    .switch { position: relative; display: inline-block; width: 34px; height: 18px; margin: 0; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .2s; border-radius: 18px; }
+    .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
+    input:checked + .slider { background-color: #2196F3; }
+    input:checked + .slider:before { transform: translateX(16px); }
+
+    .action-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+    .action-footer button { 
+      font-family: inherit; box-sizing: border-box; height: 26px; min-width: 50px; padding: 0 14px; 
+      border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; 
+      transition: all 0.15s ease; display: inline-flex; align-items: center; justify-content: center;
+    }
+    
+    #btnReset { background: #e0e0e0; color: #333; }
+    #btnReset:hover { background: #d6d6d6; }
+    #btnReset.undo-state { background: #d0d0d0; color: #111; font-weight: bold; }
+    
+    #btnCancel { background: #e0e0e0; color: #333; }
+    #btnCancel:hover { background: #d6d6d6; }
+    
+    #btnApply { background: #2196F3; color: white; }
+    #btnApply:hover:not(:disabled) { background: #1976D2; }
+    #btnApply:disabled { background: #e0e0e0; color: #999; cursor: not-allowed; }
+
+    #subSettingsArea { transition: opacity 0.3s ease; }
+    #subSettingsArea.disabled { opacity: 0.4; pointer-events: none; }
+    #opacityWrapper { transition: opacity 0.3s ease; }
+    #opacityWrapper.disabled { opacity: 0.3; pointer-events: none; }
+
+    body.dark-theme { background: #1a1a1a; color: #f0f0f0; }
+    body.dark-theme .top-btn { color: #bbb; background: #262626; }
+    body.dark-theme .top-btn:hover { background: #363636; }
+    body.dark-theme .divider { background: #2a2a2a; }
+    body.dark-theme .section-title { color: #aaaaaa; }
+    body.dark-theme .main-brand { color: #ffffff; }
+    body.dark-theme select, body.dark-theme input[type="text"] { background: #262626; color: #ffffff; }
+    body.dark-theme .bold-toggle-btn { background: #262626; color: #ffffff; }
+    body.dark-theme .bold-toggle-btn:hover { background: #363636; }
+    body.dark-theme .bold-toggle-btn.active { background: #2196F3; color: #ffffff; box-shadow: inset 0 1px 3px rgba(0,0,0,0.4); }
+    body.dark-theme .slider { background-color: #444444; }
+    body.dark-theme input:checked + .slider { background-color: #2196F3; }
+    body.dark-theme input[type="range"] { --track-bg: #555555; --tick-color: #888888; }
+    body.dark-theme .preset-color { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2); }
+    
+    body.dark-theme #btnReset, body.dark-theme #btnCancel { background: #333333; color: #eeeeee; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
+    body.dark-theme #btnReset:hover, body.dark-theme #btnCancel:hover { background: #444444; }
+    body.dark-theme #btnReset.undo-state { background: #555555; color: #ffffff; font-weight: bold; }
+    body.dark-theme #btnApply { background: #2196F3; color: #ffffff; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1); }
+    body.dark-theme #btnApply:hover:not(:disabled) { background: #42A5F5; }
+    body.dark-theme #btnApply:disabled { background: #2a2a2a; color: #666666; cursor: not-allowed; box-shadow: none; }
+
+    .setting-item.row-layout { flex-direction: row; align-items: flex-end; gap: 10px; margin-bottom: 5px; }
+    .col-left { display: flex; flex-direction: column; flex: 1; }
+    .col-left > label { font-size: 12px; color: #666; margin-bottom: 4px; display: block; }
+    body.dark-theme .col-left > label { color: #aaaaaa; }
+    .col-left > input[type="range"] { margin: 2px 0 4px 0; }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar">
+    <div class="top-bar-left">
+      <a href="https://github.com/lasdocas/lasDoscas-youtube-dual-subtitles" target="_blank" class="top-btn"" style="display: inline-flex; align-items: center; justify-content: center; width: 28px; padding: 4px 0; text-decoration: none; box-sizing: border-box;">
+        <svg viewBox="0 0 16 16" version="1.1" aria-hidden="true" style="width: 14px; height: 14px; fill: currentColor; display: block;">
+          <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+        </svg>
+      </a>
+
+      <button type="button" id="uiLangToggleBtn" class="top-btn">ZH</button>
+
+      <button type="button" id="themeToggleBtn" class="top-btn">◑</button>
+    </div>
+
+    <div class="top-bar-right" style="display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap;">
+      <span class="main-brand" data-i18n="masterSwitch">Lasdocas Dual</span>
+      <label class="switch">
+        <input type="checkbox" id="enabled">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+  
+  <div class="setting-item" style="margin-bottom: 2px;">
+    <div class="section-title" style="margin-bottom: 6px;" data-i18n="globalFont">字体系列</div>
+    <select id="font">
+      <option value="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" data-i18n="fontSystemDefault">系统默认</option>
+      <option value="Arial, sans-serif">Arial</option>
+      <option value="'Courier New', Courier, monospace">Courier New</option>
+      <option value="Georgia, serif">Georgia</option>
+      <option value="'Montserrat', sans-serif">Montserrat</option>
+      <option value="'Roboto Medium', Roboto, sans-serif">Roboto Medium</option>
+      <option value="'Microsoft YaHei', sans-serif">微软雅黑 (Windows)</option>
+      <option value="'PingFang SC', 'PingFang TC', -apple-system, sans-serif">苹方 (Mac)</option>
+    </select>
+  </div>
+
+  <div id="subSettingsArea">
+    <hr class="divider">
+
+    <div class="section-header">
+      <div class="section-title" data-i18n="firstSub">第一字幕（原文）</div>
+      <label class="switch">
+        <input type="checkbox" id="showSrc">
+        <span class="slider"></span>
+      </label>
+    </div>
+    
+    <div class="setting-item row-layout">
+      <div class="col-left">
+        <label data-i18n="normalSize">字号（默认视图及影院模式）</label>
+        <input type="range" id="srcSize" min="0.5" max="1.5" step="0.05" style="--tick: 25%;">
+      </div>
+      <button type="button" id="srcNormalBoldBtn" class="bold-toggle-btn">B</button>
+    </div>
+    
+    <div class="setting-item row-layout">
+      <div class="col-left">
+        <label data-i18n="fsSize">字号（全屏）</label>
+        <input type="range" id="fsSrcSize" min="0.75" max="2.0" step="0.05" style="--tick: 32%;">
+      </div>
+      <button type="button" id="srcFsBoldBtn" class="bold-toggle-btn">B</button>
+    </div>
+
+    <div class="setting-item inline-group">
+      <input type="text" id="srcColor" placeholder="#d8dee9" maxlength="7" style="width: 65px; flex: none;">
+      <div class="color-presets">
+        <button type="button" class="preset-color" style="background: #ffffff;" data-target="srcColor" data-color="#ffffff"></button>
+        <button type="button" class="preset-color" style="background: #d8dee9;" data-target="srcColor" data-color="#d8dee9"></button>
+        <button type="button" class="preset-color" style="background: #f76296;" data-target="srcColor" data-color="#f76296"></button>
+        <button type="button" class="preset-color" style="background: #ec6628;" data-target="srcColor" data-color="#ec6628"></button>
+        <button type="button" class="preset-color" style="background: #ffb412;" data-target="srcColor" data-color="#ffb412"></button>
+        <button type="button" class="preset-color" style="background: #4eecbd;" data-target="srcColor" data-color="#63e6be"></button>
+        <button type="button" class="preset-color" style="background: #65d4f3;" data-target="srcColor" data-color="#7fdaf4"></button>
+        <button type="button" class="preset-color" style="background: #7a8fd8;" data-target="srcColor" data-color="#6b7dbd"></button>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="section-header">
+      <div class="section-title" data-i18n="secondSub">第二字幕（译文）</div>
+      <label class="switch">
+        <input type="checkbox" id="showTrans">
+        <span class="slider"></span>
+      </label>
+    </div>
+    
+    <div class="setting-item" style="margin-bottom: 6px;">
+      <select id="lang">
+        <option value="en">English</option>
+        <option value="zh-CN">中文（简体）</option>
+        <option value="zh-TW">中文（繁體）</option>
+        <option value="es">Español</option>
+        <option value="fr">Français</option>
+        <option value="fr-CA">Français canadien</option>
+        <option value="de">Deutsch</option>
+        <option value="ja">日本語</option>
+        <option value="ko">한국어</option>
+        <option value="pt">Português</option>
+        <option value="id">Bahasa Indonesia</option>
+        <option value="ms">Bahasa Melayu</option>
+        <option value="ru">Русский</option>
+        <option value="ar">العربية</option>
+        <option value="hi">हिन्दी</option>
+        <option value="ta">தமிழ்</option>
+        <option value="th">ภาษาไทย</option>
+        <option value="vi">Tiếng Việt</option>
+        <option value="tr">Türkçe</option>
+        <option value="pl">Polski</option>
+        <option value="nl">Nederlands</option>
+        <option value="sv">Svenska</option>
+        <option value="da">Dansk</option>
+        <option value="no">Norsk</option>
+        <option value="fi">Suomi</option>
+        <option value="it">Italiano</option>
+        <option value="ro">Română</option>
+        <option value="hu">Magyar</option>
+        <option value="cs">Čeština</option>
+        <option value="hr">Hrvatski</option>
+        <option value="el">Ελληνικά</option>
+        <option value="iw">עברית</option>
+        <option value="tl">Filipino</option>
+        <option value="uk">Українська</option>
+        <option value="eu">Euskara</option>
+        <option value="ca">Català</option>
+        <option value="gl">Galego</option>
+        <option value="is">Íslenska</option>
+      </select>
+    </div>
+    
+    <div class="setting-item row-layout">
+      <div class="col-left">
+        <label data-i18n="normalSize">字号（默认视图及影院模式）</label>
+        <input type="range" id="transSize" min="0.5" max="1.5" step="0.05" style="--tick: 25%;">
+      </div>
+      <button type="button" id="transNormalBoldBtn" class="bold-toggle-btn">B</button>
+    </div>
+    
+    <div class="setting-item row-layout">
+      <div class="col-left">
+        <label data-i18n="fsSize">字号（全屏）</label>
+        <input type="range" id="fsTransSize" min="0.75" max="2.0" step="0.05" style="--tick: 32%;">
+      </div>
+      <button type="button" id="transFsBoldBtn" class="bold-toggle-btn">B</button>
+    </div>
+
+    <div class="setting-item inline-group">
+      <input type="text" id="transColor" placeholder="#7fdaf4" maxlength="7" style="width: 65px; flex: none;">
+      <div class="color-presets">
+        <button type="button" class="preset-color" style="background: #ffffff;" data-target="transColor" data-color="#ffffff"></button>
+        <button type="button" class="preset-color" style="background: #d8dee9;" data-target="transColor" data-color="#d8dee9"></button>
+        <button type="button" class="preset-color" style="background: #f76296;" data-target="transColor" data-color="#f76296"></button>
+        <button type="button" class="preset-color" style="background: #ec6628;" data-target="transColor" data-color="#ec6628"></button>
+        <button type="button" class="preset-color" style="background: #ffb412;" data-target="transColor" data-color="#ffb412"></button>
+        <button type="button" class="preset-color" style="background: #4eecbd;" data-target="transColor" data-color="#63e6be"></button>
+        <button type="button" class="preset-color" style="background: #65d4f3;" data-target="transColor" data-color="#7fdaf4"></button>
+        <button type="button" class="preset-color" style="background: #7a8fd8;" data-target="transColor" data-color="#6b7dbd"></button>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="setting-item" style="margin-bottom: 6px;">
+      <div class="section-title" style="margin-bottom: 6px;" data-i18n="fsBgStyleLabel">全屏字幕背景</div>
+      <select id="fsBgStyle">
+        <option value="none" data-i18n="fsBgStyleNone">无背景</option>
+        <option value="fit" data-i18n="fsBgStyleFit">贴合字幕</option>
+        <option value="fixed" data-i18n="fsBgStyleFixed">锁定背景框</option>
+      </select>
+    </div>
+
+    <div class="setting-item" id="opacityWrapper" style="margin-bottom: 0;">
+      <label data-i18n="fsBgOpacityLabel">背景透明度</label>
+      <input type="range" id="fsBgOpacity" min="5" max="100" step="5" style="--tick: 73.68%;">
+    </div>
+  </div>
+
+  <div class="action-footer">
+    <button type="button" id="btnReset" data-i18n="resetBtn">重置</button>
+    <div style="display: flex; gap: 8px;">
+      <button type="button" id="btnCancel" data-i18n="cancelBtn">关闭</button>
+      <button type="button" id="btnApply" data-i18n="applyBtn" disabled>应用</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

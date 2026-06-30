@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "lasDoscas - YouTube™ 双语字幕"
+  },
+  "extDesc": {
+    "message": "观看任意带字幕的 YouTube 视频，实时显示双语字幕。字体、大小和颜色均可自由定制。"
+  },
+  "commandToggleDesc": {
+    "message": "打开独立设置面板"
+  }
+}

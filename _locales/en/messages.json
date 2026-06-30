@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "lasDoscas - YouTube™ Dual Subtitles"
+  },
+  "extDesc": {
+    "message": "Watch any subtitle-enabled YouTube video with real-time bilingual subtitles. Fully customizable in font, size, and color."
+  },
+  "commandToggleDesc": {
+    "message": "Open standalone settings panel"
+  }
+}

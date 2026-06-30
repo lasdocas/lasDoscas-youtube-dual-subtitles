@@ -1,0 +1,105 @@
+body[data-yt-dual-sub-active="true"] .caption-window,
+body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.custom-subtitle-wrapper {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important; 
+  align-items: center !important;
+  box-sizing: border-box !important;
+  text-align: center !important;
+  
+  background: #1f1f1f !important; 
+  border: none !important;
+  border-radius: 8px !important;
+  min-height: 56px !important; 
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3) !important;
+  
+  cursor: default !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  caret-color: transparent !important; 
+  outline: none !important; 
+}
+
+.custom-subtitle-wrapper[data-layout-mode="default"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-top: 8px !important; 
+  margin-bottom: 12px !important;
+  padding: 8px 16px !important; 
+  border-radius: 8px !important; 
+}
+
+.custom-subtitle-wrapper[data-layout-mode="theater"] {
+  margin: 0 auto !important; 
+  padding: 10px 24px !important; 
+}
+
+.custom-subtitle-wrapper[data-layout-mode="fullscreen"] {
+  position: absolute !important;
+  bottom: 96px !important;       
+  left: 0 !important;
+  right: 0 !important;
+  margin: 0 auto !important;
+  z-index: 9999 !important;      
+  background: rgba(31, 31, 31, 0.85) !important; 
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+  padding: 10px 30px !important; 
+}
+
+.custom-source-text, 
+.custom-translated-text {
+  display: block !important;
+  width: 100% !important;
+  margin: 0 !important; 
+  padding: 0 !important; 
+  line-height: 1.25 !important; 
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  text-shadow: none !important;
+  -webkit-text-stroke: 0px !important;
+
+  cursor: default !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  caret-color: transparent !important;
+}
+
+.custom-source-text {
+  margin-bottom: 4px !important; 
+  font-size: calc(18px * var(--player-scale, 1) * var(--user-scale, 1)) !important;
+}
+
+.custom-translated-text {
+  font-size: calc(22px * var(--player-scale, 1) * var(--user-scale, 1)) !important;
+}
+
+.custom-subtitle-wrapper[data-layout-mode="fullscreen"][data-fs-bg-style="none"] {
+  background: transparent !important;
+  box-shadow: none !important;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,1) !important;
+}
+
+.custom-subtitle-wrapper[data-layout-mode="fullscreen"][data-fs-bg-style="fit"] {
+  width: fit-content !important;
+  max-width: 85% !important; 
+}
+
+.github-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.github-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
