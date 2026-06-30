@@ -1,4 +1,4 @@
-# lasDoscas YouTube Dual Subtitles
+# lasDoscas - YouTube™ Dual Subtitles
 
 <p align="center">
   <a href="#简体中文">简体中文</a> | 
