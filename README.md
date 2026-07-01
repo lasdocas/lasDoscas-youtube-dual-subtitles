@@ -28,7 +28,7 @@
 ### 🛠️ 安装方法
 
 #### 方法一：从 Chrome 应用商店安装（推荐）
-1. 使用上述任意基于 Chromium 的浏览器访问 [Chrome Web Store (即将上线)](#)。 *(注：项目已提交审核，通过后将第一时间更新下载链接)*
+1. 使用上述任意基于 Chromium 的浏览器访问 [Chrome Web Store](https://chromewebstore.google.com/detail/lasdoscas-youtube-dual-su/loefcmgapbdgdldkcekokidchffegceg)。
 2. **Edge 用户提示**：如果是第一次在 Edge 中安装 Chrome 商店的插件，请点击页面顶部横幅的 **“允许来自其他商店的扩展”**，然后点击 **“添加至 Chrome”** 即可直接无缝安装。
 
 #### 方法二：开发者模式安装（本地调试 / GitHub 源码下载）
@@ -65,7 +65,7 @@ This extension is built on the Chrome Extension Manifest V3 standard and is 100%
 ### 🛠️ Installation
 
 #### Method 1: Install from Chrome Web Store (Recommended)
-1. Visit the [Chrome Web Store (Coming Soon)](#) using any Chromium-based browser. *(Note: The extension has been submitted for review and the link will be updated immediately upon approval)*
+1. Visit the [Chrome Web Store](https://chromewebstore.google.com/detail/lasdoscas-youtube-dual-su/loefcmgapbdgdldkcekokidchffegceg) using any Chromium-based browser.
 2. **Note for Edge users**: If this is your first time installing an extension from the Chrome Web Store, click **"Allow extensions from other stores"** on the banner at the top of the page, then click **"Add to Chrome"** to install seamlessly.
 
 #### Method 2: Developer Mode Installation (Local Debugging / GitHub Download)
@@ -102,7 +102,7 @@ Esta extensión está desarrollada bajo el estándar Chrome Extension Manifest V
 ### 🛠️ Instalación
 
 #### Método 1: Instalar desde Chrome Web Store (Recomendado)
-1. Visita el enlace de [Chrome Web Store (Próximamente)](#) utilizando cualquiera de los navegadores basados en Chromium mencionados anteriormente. *(Nota: El proyecto ha sido enviado a revisión y el enlace se actualizará inmediatamente después de su aprobación)*
+1. Visita el enlace de [Chrome Web Store](https://chromewebstore.google.com/detail/lasdoscas-youtube-dual-su/loefcmgapbdgdldkcekokidchffegceg) utilizando cualquiera de los navegadores basados en Chromium mencionados anteriormente.
 2. **Nota para usuarios de Edge**: Si es la primera vez que instalas una extensión desde la Chrome Web Store, haz clic en **"Permitir extensiones de otras tiendas"** en el banner superior de la página, y luego haz clic en **"Añadir a Chrome"** para instalarla sin problemas.
 
 #### Método 2: Instalación en Modo de Desarrollador (Depuración Local / Descarga desde GitHub)

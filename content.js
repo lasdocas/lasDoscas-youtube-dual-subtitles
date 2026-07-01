@@ -259,6 +259,12 @@ function ensureSubtitleContainer() {
       <div class="custom-source-text">&nbsp;</div>
       <div class="custom-translated-text">&nbsp;</div>
     `;
+    // 关键修复：告诉 Chrome 的自动深色模式（Auto Dark Theme / force-dark）
+    // "这个元素及其子元素的颜色已经是特意设计好的，不需要被自动反色"。
+    // color-scheme 是可继承属性，设置在 wrapper 上即可覆盖两个文本子元素。
+    // 该属性是标准 CSS 属性，在未开启该功能的浏览器（如 Edge、或亮色模式下的 Chrome）
+    // 中不会有任何副作用。
+    wrapper.style.setProperty('color-scheme', 'only light', 'important');
   }
 
   if (layoutMode === 'fullscreen') {

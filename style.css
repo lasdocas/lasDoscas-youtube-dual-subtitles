@@ -12,7 +12,19 @@ body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
   align-items: center !important;
   box-sizing: border-box !important;
   text-align: center !important;
-  
+
+  /* 建立独立的层叠上下文并置于层级上限，避免被 YouTube 播放器自身的
+     装饰性图层（"影院灯效" / Ambient Mode，在深色主题下于播放器周围
+     逐渐加深的调光遮罩）盖住，导致字幕看起来"淡出消失"。
+     该效果只有当 YouTube 站点主题为深色时才会启用，这也解释了
+     为什么该 bug 只在深色模式下出现——关闭"影院灯效"后问题消失，
+     印证了它就是那层盖在字幕上方的调光遮罩。
+     这里用 2147483647（32 位有符号整数最大值，浏览器 z-index 的实际上限）
+     确保不管 YouTube 那层遮罩用了多大的 z-index，我们始终能压过它。 */
+  position: relative !important;
+  z-index: 2147483647 !important;
+  isolation: isolate !important;
+
   background: #1f1f1f !important; 
   border: none !important;
   border-radius: 8px !important;
