@@ -5,7 +5,7 @@
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; width: 320px; padding: 10px 14px; margin: 0; background: #f9f9f9; color: #222; transition: background 0.2s, color 0.2s; }
     
-    ::-webkit-scrollbar {
+    body::-webkit-scrollbar {
       display: none;
     }
     body {
@@ -117,8 +117,36 @@
     .setting-item.row-layout { flex-direction: row; align-items: flex-end; gap: 10px; margin-bottom: 5px; }
     .col-left { display: flex; flex-direction: column; flex: 1; }
     .col-left > label { font-size: 12px; color: #666; margin-bottom: 4px; display: block; }
+    body.dark-theme .setting-item > label,
+    body.dark-theme .setting-item > label,
+    body.dark-theme .setting-item > label,
     body.dark-theme .col-left > label { color: #aaaaaa; }
     .col-left > input[type="range"] { margin: 2px 0 4px 0; }
+
+    /* --- 优化 select 下拉菜单的滚动条样式 (加宽实用版) --- */
+    select::-webkit-scrollbar {
+    width: 12px; /* 恢复到接近系统默认的舒适宽度 */
+    background-color: transparent;
+    }
+    select::-webkit-scrollbar-track {
+    background-color: transparent;
+    }
+    select::-webkit-scrollbar-thumb {
+    background-color: #bababa; /* 稍微加深一点，更清晰 */
+    border-radius: 6px; /* 匹配 12px 的宽度 */
+    /* 去掉了之前的 transparent border，让滑块实体填满 12px，更好拖拽 */
+    }
+    select::-webkit-scrollbar-thumb:hover {
+    background-color: #999999;
+    }
+
+    /* 暗色主题下的滚动条配色适配 */
+    body.dark-theme select::-webkit-scrollbar-thumb {
+    background-color: #666666;
+    }
+    body.dark-theme select::-webkit-scrollbar-thumb:hover {
+    background-color: #888888;
+    }
   </style>
 </head>
 <body>
@@ -250,6 +278,24 @@
         <option value="ca">Català</option>
         <option value="gl">Galego</option>
         <option value="is">Íslenska</option>
+        <!-- 新增的选项 -->
+        <option value="sw">Kiswahili</option>
+        <option value="et">eesti</option>
+        <option value="lv">latviešu</option>
+        <option value="lt">lietuvių</option>
+        <option value="sk">slovenčina</option>
+        <option value="sl">slovenščina</option>
+        <option value="bg">български</option>
+        <option value="sr">српски</option>
+        <option value="ur">‫اردو‬‎</option>
+        <option value="fa">‫فارسی‬‎</option>
+        <option value="mr">मराठी</option>
+        <option value="bn">বাংলা</option>
+        <option value="gu">ગુજરાતી</option>
+        <option value="te">తెలుగు</option>
+        <option value="kn">ಕನ್ನಡ</option>
+        <option value="ml">മലയാളം</option>
+        <option value="am">አማርኛ</option>
       </select>
     </div>
     

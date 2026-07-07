@@ -46,7 +46,10 @@ function getSmartDefaultLang() {
     'en', 'es', 'fr', 'de', 'ja', 'ko', 'pt', 'id', 'ms', 'ru', 
     'ar', 'hi', 'ta', 'th', 'vi', 'tr', 'pl', 'nl', 'sv', 'da', 
     'no', 'fi', 'it', 'ro', 'hu', 'cs', 'hr', 'el', 'tl', 'uk', 
-    'eu', 'ca', 'gl', 'is'
+    'eu', 'ca', 'gl', 'is',
+    // 下面是新增的 17 种语言
+    'sw', 'et', 'lv', 'lt', 'sk', 'sl', 'bg', 'sr', 'ur', 'fa', 
+    'mr', 'bn', 'gu', 'te', 'kn', 'ml', 'am'
   ];
   if (supportedPrefixes.includes(prefix)) return prefix;
   return 'en';
@@ -60,6 +63,12 @@ let ccButtonObserver = null;
 
 let currentCaptionContainer = null;
 let containerMonitor = null;
+
+// ==========================================
+// 🚀 新增：预加载核心状态字典 (O(1) 零延迟架构)
+// ==========================================
+let preloadedTranslations = new Map();
+let isTrackPreloaded = false;
 
 let currentSettings = {
   enabled: true,
@@ -99,6 +108,12 @@ try {
     syncPluginState();
     if (changes.lang || changes.enabled) {
       lastText = ""; 
+      // 如果语言改变，重新执行预加载
+      if (changes.lang && currentSettings.enabled) {
+        preloadedTranslations.clear();
+        isTrackPreloaded = false;
+        preloadFullTrack();
+      }
     }
   });
 } catch (e) {
@@ -214,7 +229,6 @@ function applyStylesToDOM() {
       wrapper.style.setProperty('box-shadow', currentSettings.fsBgStyle === 'fit' ? '0 4px 15px rgba(0, 0, 0, 0.4)' : '0 10px 30px rgba(0, 0, 0, 0.6)', 'important');
     }
   } else {
-
     wrapper.style.setProperty('background', '#1f1f1f', 'important');
     wrapper.style.setProperty('box-shadow', '0 4px 15px rgba(0, 0, 0, 0.3)', 'important');
   }
@@ -255,15 +269,16 @@ function ensureSubtitleContainer() {
   if (!wrapper) {
     wrapper = document.createElement('div');
     wrapper.className = 'custom-subtitle-wrapper';
+
+    // 🚀 新增：无障碍屏幕阅读器支持
+    wrapper.setAttribute('role', 'status');
+    wrapper.setAttribute('aria-live', 'polite');
+    wrapper.setAttribute('aria-atomic', 'true');
+
     wrapper.innerHTML = `
       <div class="custom-source-text">&nbsp;</div>
       <div class="custom-translated-text">&nbsp;</div>
     `;
-    // 关键修复：告诉 Chrome 的自动深色模式（Auto Dark Theme / force-dark）
-    // "这个元素及其子元素的颜色已经是特意设计好的，不需要被自动反色"。
-    // color-scheme 是可继承属性，设置在 wrapper 上即可覆盖两个文本子元素。
-    // 该属性是标准 CSS 属性，在未开启该功能的浏览器（如 Edge、或亮色模式下的 Chrome）
-    // 中不会有任何副作用。
     wrapper.style.setProperty('color-scheme', 'only light', 'important');
   }
 
@@ -362,7 +377,6 @@ function updateWrapperDimensions() {
     }
     wrapper.style.setProperty('border-radius', '8px', 'important');
   } else {
-
     wrapper.style.setProperty('width', '100%', 'important');
     wrapper.style.setProperty('max-width', '100%', 'important');
     wrapper.style.removeProperty('margin-left');
@@ -384,7 +398,6 @@ function initPlayerResizeObserver() {
     if (isOrphaned) return;
     window.requestAnimationFrame(() => {
       if (isOrphaned) return;
-
       updateWrapperDimensions();
     });
   });
@@ -414,6 +427,7 @@ function initCCButtonObserver() {
   ccButtonObserver.observe(ccBtn, { attributes: true, attributeFilter: ['aria-pressed'] });
 }
 
+// 优化后的 updateSubtitleContent
 function updateSubtitleContent(source, translated) {
   if (isOrphaned) return;
   const wrapper = ensureSubtitleContainer();
@@ -422,14 +436,20 @@ function updateSubtitleContent(source, translated) {
   const sourceText = wrapper.querySelector('.custom-source-text');
   const transText = wrapper.querySelector('.custom-translated-text');
 
+  // 1. 仅执行纯粹的 DOM 文本替换 (高频操作)
   if (sourceText) sourceText.textContent = source;
   if (transText) {
     transText.textContent = translated || "";
     if (!translated) transText.innerHTML = "&nbsp;"; 
   }
 
-  updateWrapperVisibility();
-  applyStylesToDOM();
+  // 2. 仅保留轻量级的可见性更新
+  // 因为当字幕从“有文字”变为“无文字”时，外层容器的背景框可能需要隐藏
+  updateWrapperVisibility(); 
+
+  // 🚀 核心优化：删除 applyStylesToDOM();
+  // 样式（字号、颜色、粗细、排版）现已完全交由 ResizeObserver, MutationObserver 和 storage 变化事件负责，
+  // 不再被高频的字幕文本切换强制触发。
 }
 
 function clearSubtitleContent() {
@@ -466,6 +486,9 @@ function startContainerMonitor() {
   }, 1000);
 }
 
+// ==========================================
+// 🚀 核心更新：混合架构（预加载 O(1) + 强制同框渲染兜底）
+// ==========================================
 function bindMutationObserver(containerTarget) {
   if (observer) observer.disconnect();
   if (!containerTarget) return;
@@ -494,31 +517,51 @@ function bindMutationObserver(containerTarget) {
     if (currentText !== lastText) {
       lastText = currentText;
 
-      try {
-        chrome.runtime.sendMessage({ 
-          action: "translate", 
-          text: currentText, 
-          lang: currentSettings.lang 
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            const errMsg = chrome.runtime.lastError.message || "";
-            if (errMsg.includes("Extension context invalidated")) {
-              dieQuietly();
-            }
-            return;
-          }
-          
-          if (isOrphaned) return;
+      // 1. 尝试从本地预加载字典中极速获取 (O(1))
+      if (isTrackPreloaded && preloadedTranslations.has(currentText)) {
+        const translatedText = preloadedTranslations.get(currentText);
+        // 缓存命中：瞬间同框上屏！
+        updateSubtitleContent(currentText, translatedText);
+      } else {
+        // 2. 兜底方案 (Fallback) - 视觉完整性优先模式
+        // 注意：这里【绝对不】提前调用 updateSubtitleContent。
+        // 宁愿屏幕上暂时保留上一句，或者保持空白，也要死等翻译结果，确保一出现就是完整的双语。
 
-          if (response && response.translation) {
-            updateSubtitleContent(currentText, response.translation);
-          } else {
-            updateSubtitleContent(currentText, "");
+        try {
+          chrome.runtime.sendMessage({ 
+            action: "translate", 
+            text: currentText, 
+            lang: currentSettings.lang 
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              const errMsg = chrome.runtime.lastError.message || "";
+              if (errMsg.includes("Extension context invalidated")) {
+                dieQuietly();
+              }
+              return;
+            }
+            
+            if (isOrphaned) return;
+
+            // 核心防错机制：如果网络请求耗时过长，当前视频已经切到下一句话了，
+            // 这条迟到的翻译必须直接丢弃，否则会导致“旧字幕覆盖新画面”的灾难体验。
+            if (currentText === lastText) {
+              if (response && response.translation) {
+                // 拿到结果了，第一和第二字幕正式“同框上屏”
+                updateSubtitleContent(currentText, response.translation);
+                // 顺手存入缓存，下次如果你倒退视频重看这句，就是零延迟了！
+                preloadedTranslations.set(currentText, response.translation);
+              } else {
+                // 极端情况：API 彻底失败没返回译文。
+                // 为了不影响基本观影，只能退让一步，单显原文。
+                updateSubtitleContent(currentText, "");
+              }
+            }
+          });
+        } catch (error) {
+          if (error.message && error.message.includes("Extension context invalidated")) {
+            dieQuietly();
           }
-        });
-      } catch (error) {
-        if (error.message && error.message.includes("Extension context invalidated")) {
-          dieQuietly();
         }
       }
     }
@@ -527,13 +570,163 @@ function bindMutationObserver(containerTarget) {
   observer.observe(containerTarget, { childList: true, subtree: true });
 }
 
+// ==========================================
+// 🚀 新增：预加载工作流引擎
+// ==========================================
+async function fetchCaptionsData() {
+  try {
+    const scripts = document.querySelectorAll('script');
+    let playerDataStr = null;
+    
+    for (const script of scripts) {
+      if (script.textContent && script.textContent.includes('ytInitialPlayerResponse')) {
+        const match = script.textContent.match(/ytInitialPlayerResponse\s*=\s*(\{.*?\});/);
+        if (match && match[1]) {
+          playerDataStr = match[1];
+          break;
+        }
+      }
+    }
+
+    if (!playerDataStr) return null;
+
+    const playerData = JSON.parse(playerDataStr);
+    const captions = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    
+    if (!captions || captions.length === 0) return null;
+
+    let selectedTrack = captions.find(track => track.vssId.startsWith('a.') || track.languageCode === 'en') || captions[0];
+    
+    return selectedTrack.baseUrl;
+
+  } catch (error) {
+    console.warn("lasDoscas: 无法解析 YouTube 播放器数据", error);
+    return null;
+  }
+}
+
+async function downloadAndParseSubtitles(trackUrl) {
+  try {
+    const url = new URL(trackUrl);
+    url.searchParams.set('fmt', 'json3');
+    
+    const response = await fetch(url.toString());
+    
+    // 1. 检查 HTTP 状态码是否正常
+    if (!response.ok) {
+      console.warn(`lasDoscas: 预加载中止，服务器返回状态码 ${response.status}`);
+      return [];
+    }
+    
+    // 2. 先作为纯文本读取，避免直接执行 .json() 崩溃
+    const text = await response.text();
+    if (!text || text.trim() === '') {
+      // console.warn("lasDoscas: 预加载中止，收到空字幕数据");
+      return [];
+    }
+
+    // 3. 安全地尝试解析 JSON
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.warn("lasDoscas: 预加载中止，JSON 格式解析失败");
+      return []; // 解析失败就温和地返回空数组，不要让整个扩展崩溃
+    }
+    
+    let allSentences = new Set();
+    
+    if (data && data.events) {
+      data.events.forEach(event => {
+        if (event.segs) {
+          const segText = event.segs.map(seg => seg.utf8).join('').replace(/\n/g, ' ').trim();
+          if (segText) {
+            allSentences.add(segText);
+          }
+        }
+      });
+    }
+    
+    return Array.from(allSentences);
+  } catch (error) {
+    // 捕获网络断开等其他严重错误
+    console.warn("lasDoscas: 下载字幕文件遇到网络错误", error.message);
+    return [];
+  }
+}
+
+async function preloadFullTrack() {
+  if (isOrphaned || !currentSettings.enabled) return;
+  
+  console.log("lasDoscas: 开始预加载全片字幕...");
+
+  const trackUrl = await fetchCaptionsData();
+  if (!trackUrl) {
+    console.log("lasDoscas: 未找到可用的字幕轨。");
+    return;
+  }
+
+  const sourceSentences = await downloadAndParseSubtitles(trackUrl);
+  console.log(`lasDoscas: 成功提取 ${sourceSentences.length} 条字幕记录，开始后台静默翻译...`);
+
+  // 更加保守的限流配置：每批处理 3 句，间隔 800ms
+  const batchSize = 3;
+  for (let i = 0; i < sourceSentences.length; i += batchSize) {
+    if (isOrphaned || !currentSettings.enabled) break;
+
+    const batch = sourceSentences.slice(i, i + batchSize);
+    
+    const promises = batch.map(text => {
+        if (preloadedTranslations.has(text)) return Promise.resolve();
+
+        return new Promise((resolve) => {
+            chrome.runtime.sendMessage({ 
+                action: "translate", 
+                text: text, 
+                lang: currentSettings.lang 
+            }, (response) => {
+                if (chrome.runtime.lastError) return resolve();
+                if (response && response.translation) {
+                    preloadedTranslations.set(text, response.translation);
+                }
+                resolve();
+            });
+        });
+    });
+
+    await Promise.all(promises);
+    
+    // 强制休眠 800ms 以保护 API，防止触发 429 报错
+    await new Promise(r => setTimeout(r, 800)); 
+  }
+
+  isTrackPreloaded = true;
+  console.log("lasDoscas: 全片字幕预加载完成！现已开启零延迟渲染模式。");
+}
+
+// 确保在页面初次加载时也能自动启动预加载
+setTimeout(() => {
+  if (checkContext() && !isOrphaned && currentSettings.enabled && !isTrackPreloaded) {
+    preloadFullTrack();
+  }
+}, 2000);
+
 window.addEventListener('yt-navigate-finish', () => {
   if (!checkContext() || isOrphaned) return;
   lastText = "";
   currentCaptionContainer = null;
+  
+  // 清理之前的预加载数据
+  preloadedTranslations.clear();
+  isTrackPreloaded = false;
+
   const oldWrapper = document.querySelector('.custom-subtitle-wrapper');
   if (oldWrapper) oldWrapper.remove();
   syncPluginState();
+
+  if (currentSettings.enabled) {
+    preloadFullTrack();
+  }
 });
 
 loadAndApplySettings();
@@ -557,7 +750,6 @@ function toggleFullscreenSettings() {
   fullscreenSettingsIframe.style.setProperty('top', '60px', 'important');
   fullscreenSettingsIframe.style.setProperty('right', '20px', 'important');
   fullscreenSettingsIframe.style.setProperty('width', '348px', 'important');
-  
   fullscreenSettingsIframe.style.setProperty('height', '500px', 'important'); 
   
   fullscreenSettingsIframe.style.setProperty('border', 'none', 'important');
@@ -578,6 +770,13 @@ function removeFullscreenSettings() {
 
 window.addEventListener('message', (event) => {
   if (isOrphaned) return;
+
+  // 🚀 新增：安全防线，严格校验消息发送者的来源
+  // 预期来源应该是我们自己的 Chrome 扩展
+  const expectedOrigin = chrome.runtime.getURL('').replace(/\/$/, '');
+  if (event.origin !== expectedOrigin) {
+    return; // 如果来源不是我们的设置面板 iframe，直接无视，静默丢弃
+  }
   
   if (event.data && event.data.action === "lasdoscas_resize") {
     if (fullscreenSettingsIframe) {
@@ -613,9 +812,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (isOrphaned) return;
   
   if (message.action === "toggle_settings_panel") {
-
     if (isNativePopupActive) return;
-    
     toggleFullscreenSettings();
   } else if (message.action === "close_settings_panel") {
     removeFullscreenSettings();

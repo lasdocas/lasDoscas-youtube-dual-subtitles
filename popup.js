@@ -25,6 +25,9 @@ const formFields = [
 
 const toggleFields = ['srcNormalBold', 'srcFsBold', 'transNormalBold', 'transFsBold'];
 
+// 面板 UI 自身的显示语言字典：只有中/英/西三种，按需求不要在这里增加更多语言。
+// 注意这跟下面的字幕翻译目标语言（38 种，见 getSmartDefaultLang）是两个完全独立的概念，
+// 千万不要混着改。
 const i18nDict = {
   'zh': {
     masterSwitch: 'lasDoscas',
@@ -79,10 +82,32 @@ const i18nDict = {
   }
 };
 
+// ⚠️ 这个函数决定的是"字幕翻译目标语言"（对应 <select id="lang"> 里的 38 个选项）的
+// 默认值，跟面板 UI 语言（下面 defaultSettings.uiLang，只有 zh/en/es）是完全不同的两件事。
+// 之前这里是一份简化版本（只会返回 'zh-CN' 或 'en'），跟 content.js 里那份更完整的版本
+// 判断逻辑不一致，会导致：比如浏览器语言是日语的新用户，content.js 会正确默认给他 'ja'，
+// 但设置面板首次打开时下拉框却显示 'en'，两边对不上。现在改成跟 content.js 完全一致的
+// 判断逻辑，两处保持同步。
 function getSmartDefaultLang() {
   const browserLang = navigator.language || 'en';
-  const prefix = browserLang.toLowerCase().split('-')[0];
+  const lowerLang = browserLang.toLowerCase();
+  const prefix = lowerLang.split('-')[0];
+
+  if (lowerLang === 'zh-tw' || lowerLang === 'zh-hk' || lowerLang === 'zh-mo') return 'zh-TW';
+  if (lowerLang === 'fr-ca') return 'fr-CA';
   if (prefix === 'zh') return 'zh-CN';
+  if (prefix === 'he' || prefix === 'iw') return 'iw';
+
+  const supportedPrefixes = [
+    'en', 'es', 'fr', 'de', 'ja', 'ko', 'pt', 'id', 'ms', 'ru', 
+    'ar', 'hi', 'ta', 'th', 'vi', 'tr', 'pl', 'nl', 'sv', 'da', 
+    'no', 'fi', 'it', 'ro', 'hu', 'cs', 'hr', 'el', 'tl', 'uk', 
+    'eu', 'ca', 'gl', 'is',
+    // 下面是新增的 17 种语言
+    'sw', 'et', 'lv', 'lt', 'sk', 'sl', 'bg', 'sr', 'ur', 'fa', 
+    'mr', 'bn', 'gu', 'te', 'kn', 'ml', 'am'
+  ];
+  if (supportedPrefixes.includes(prefix)) return prefix;
   return 'en';
 }
 
@@ -105,6 +130,8 @@ const defaultSettings = {
   fsBgStyle: 'none',
   fsBgOpacity: '75',  
   popupTheme: 'light',
+  // 面板 UI 语言：这里保持原来"只在 zh/en/es 三者之间选"的逻辑不变，
+  // 不要跟上面的 getSmartDefaultLang()（翻译目标语言，38 种）混在一起改。
   uiLang: (() => {
     const prefix = (navigator.language || 'en').toLowerCase().split('-')[0];
     if (prefix === 'zh' || prefix === 'es') return prefix;
@@ -222,6 +249,7 @@ function bindHeaderEvents() {
   });
 
   document.getElementById('uiLangToggleBtn').addEventListener('click', () => {
+    // 面板 UI 语言循环切换：固定只在 zh/en/es 三者之间轮换，不要加入更多语言。
     const langSequence = ['zh', 'en', 'es'];
     let currentIndex = langSequence.indexOf(currentUiLang);
     currentUiLang = langSequence[(currentIndex + 1) % langSequence.length];
@@ -366,10 +394,19 @@ if (window.self !== window.top) {
 
     const resizeObserver = new ResizeObserver(() => {
       const currentHeight = document.documentElement.scrollHeight;
+
+      // 安全性：明确指定目标 origin，而不是用通配符 "*"。
+      // location.ancestorOrigins[0] 是父窗口（即 youtube.com 页面）的 origin，
+      // 由浏览器提供、无法被内容脚本伪造，比手写死一个固定域名更稳妥
+      // （因为 manifest 匹配的是 *://*.youtube.com/*，父窗口也可能是
+      // m.youtube.com 等其它子域名）。极少数不支持 ancestorOrigins 的环境下
+      // 才退回到 "*"。
+      const parentOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) || '*';
+
       window.parent.postMessage({ 
         action: "lasdoscas_resize", 
         height: currentHeight 
-      }, "*");
+      }, parentOrigin);
     });
     
     resizeObserver.observe(document.body);

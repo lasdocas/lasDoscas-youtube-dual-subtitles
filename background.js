@@ -12,7 +12,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 2. 翻译请求逻辑
   if (request.action === "translate") {
     const targetLang = request.lang || "zh-CN"; 
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(request.text)}`;
+    
+    // 【优化 1：文本净化与严格编码】
+    // 移除零宽字符、Bidi 控制符(如 U+202B 等)容易导致 Google 翻译接口 500 报错的隐藏字符，并去掉首尾空格
+    const safeText = (request.text || "")
+      .replace(/[\u200B-\u200F\u202A-\u202E\uFEFF]/g, '') 
+      .trim();
+    
+    // 如果净化后文本为空，直接返回空翻译，无需发起网络请求
+    if (!safeText) {
+      sendResponse({ translation: "" });
+      return false;
+    }
+
+    // 使用净化后的 safeText 和严格的 encodeURIComponent 组装 URL
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(safeText)}`;
 
     // 封装一个带重试机制的异步请求函数
     const fetchWithRetry = async (targetUrl, retries = 2) => {
@@ -22,11 +36,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           
           // 如果是 50x 服务器错误，且还有重试次数，就稍微等一下再试
           if (response.status >= 500 && i < retries) {
-            console.warn(`[谷歌翻译 API 波动] 状态码 ${response.status}，准备进行第 ${i + 1} 次重试...`);
+            console.warn(`[lasDoscas 翻译 API 波动] 状态码 ${response.status}，准备进行第 ${i + 1} 次重试...`);
             await new Promise(resolve => setTimeout(resolve, 800)); // 暂停 800 毫秒
             continue;
           }
-          return response; // 成功（或遇到 403/429 等非服务器错误），直接返回
+          return response; // 成功（或遇到 403/429 等非服务器错误，或重试耗尽），直接返回
         } catch (err) {
           // 捕获纯网络断开的情况
           if (i === retries) throw err;
@@ -39,6 +53,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     fetchWithRetry(url)
       .then(async response => {
         if (!response.ok) {
+          // 【优化 2：拦截 500 错误并优雅降级】
+          // 如果重试结束后依然是 500 系列错误，静默拦截，不再抛出异常 (throw Error)
+          if (response.status >= 500) {
+             console.warn(`[lasDoscas] Google 翻译服务端异常 (${response.status})，已静默拦截并降级显示原文。原文: ${safeText}`);
+             return null; // 返回 null 传递给下一个 then，触发降级
+          }
+
           const errorHtml = await response.text();
           console.error(`HTTP 错误 [${response.status}]:`, errorHtml.substring(0, 200) + "...");
           if (response.status === 429 || response.status === 403) {
@@ -57,17 +78,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return response.json();
       })
       .then(data => {
+        // 【优化 2 续：接收 null，优雅降级】
+        if (!data) {
+          sendResponse({ translation: "" });
+          return;
+        }
+
         if (data && data[0]) {
           const translatedText = data[0].map(item => item[0]).join('');
           sendResponse({ translation: translatedText });
         } else {
-          sendResponse({ error: "解析翻译数据失败: 格式异常" });
+          // 如果返回的数据格式异常，同样降级处理
+          sendResponse({ translation: "" });
         }
       })
       .catch(error => {
-        console.error("翻译插件内部错误:", error);
+        console.warn("lasDoscas 翻译网络层错误或被拦截:", error.message);
         // 静默处理，不让前端字幕框报错崩溃，直接返回空字符串
-        sendResponse({ error: error.message, translation: "" }); 
+        sendResponse({ translation: "" }); 
       });
 
     return true; // 保持消息通道开启
