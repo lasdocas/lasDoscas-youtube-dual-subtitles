@@ -1,35 +1,9 @@
-🚀 核心功能与性能优化 (Core Features & Performance)
+feat: rewrite subtitle rendering engine and state management
 
-- 全片字幕预加载引擎与 O(1) 缓存 (content.js)： 新增了基于 YouTube 播放器数据的 JSON3 字幕提取功能。系统会在后台静默获取完整字幕轨，并按批次进行预先翻译，存入 Map 本地缓存。重复出现的句子直接极速读取，实现了“零延迟”的字幕同框渲染体验，极大节省了网络请求开销。
-
-- 丢弃过期响应与精准上屏 (content.js)： 实时翻译网络请求利用严格的状态比对（if (currentText === lastText)），如果接口响应回来时视频画面已切到下一句，这条迟到的“过期结果”会被直接静默丢弃，彻底杜绝了“旧译文覆盖新画面”的闪烁灾难。
-
-- 翻译请求防雷与文本净化 (background.js)： 在向 Google 翻译 API 发起请求前，新增了正则表达式清洗逻辑（过滤 [\u200B-\u200F\u202A-\u202E\uFEFF] 等不可见的零宽字符和 Bidi 双向排版控制符），从根源上减少了因特殊字符导致的服务器解析崩溃。
-
-- API 异常静默拦截与优雅降级 (background.js)： 重构了网络请求的错误捕获机制。当 Google 接口遭遇不可恢复的服务端异常（如 HTTP 500 错误）时，系统不再向控制台抛出报错，而是自动拦截并返回空结果，触发前端优雅降级（仅显示原文），确保了视频播放界面的 UI 稳定性。
-
-- 样式套用和文字更新解耦 (content.js)： 剥离了高频的内联样式重绘。现在 applyStylesToDOM() 只在设置变化、全屏/剧场切换或字幕容器刚创建时调用。高频的字幕文字更新仅操作纯粹的 DOM 文本替换 (textContent)，大幅降低了浏览器的渲染开销。
-
-🎨 界面与交互优化 (UI & UX Improvements)
-
-- 下拉菜单滚动条重构 (popup.html)： 修复了因全局隐藏滚动条导致长列表无法滚动的问题，并为语言选择下拉菜单重新设计了加宽实用版的自定义滚动条，兼顾了点击易用性，且完美适配亮/暗双色主题。
-
-- 暗色模式对比度修复 (popup.html)： 修复了暗色模式下“背景透明度”标题颜色过暗（未正确继承亮色覆盖规则）的视觉 Bug，提升了面板的整体一致性与文字可读性。
-
-🌍 国际化与语言支持 (Internationalization & Language)
-
-- 默认语言检测逻辑扩充与统一 (popup.js / content.js)： 将 popup.js 和 content.js 两端的默认翻译语言判断逻辑完全对齐，避免了新用户首开面板时下拉框默认值与实际生效语言不一致的 Bug。同时将支持列表大幅扩充，新增了对 17 种语言（如斯瓦希里语、波斯语、乌尔都语等）的浏览器默认匹配支持。
-
-🔒 安全与架构 (Security & Architecture)
-
-- 移除多余的 tabs 权限 (manifest.json)： 经代码审查，插件通讯仅依赖 tab 的 ID，并未获取敏感信息，因此正式移除了 "tabs" 权限声明，严格遵循权限最小化原则。
-
-- postMessage 通讯来源校验 (content.js + popup.js)： 接收端加入了严格的 Origin 校验，只信任来自扩展自有 URL 发出的消息；发送端发消息时将目标 origin 从宽泛的通配符 "*" 改为浏览器原生的 location.ancestorOrigins[0]，严防页面恶意脚本伪造消息操纵设置面板。
-
-♿️ 无障碍体验 (Accessibility)
-
-- 屏幕阅读器支持 (content.js)： 为自定义字幕容器补全了无障碍属性：role="status"、aria-live="polite" 以及 aria-atomic="true"。屏幕阅读器（Screen Reader）用户现在也能无障碍感知到双语字幕的动态变化。
-
-📦 配置更新 (Configuration)
-
-- 版本号升级 (manifest.json)： 扩展版本号从 3.4 正式更新至 3.5。
+- Refactor Rendering: Shift from pure DOM mutation observer to an independent time-synced renderer using video.currentTime and JSON3 cue parsing.
+- State Machine: Introduce TRACK_MODE to robustly handle different caption states.
+- Live ASR Support: Implement a buffer system to smoothly handle YouTube's auto-generated captions without flickering.
+- Player Bridge: Replace brittle script scraping with window.postMessage for reliable player snapshot.
+- Translation Optimization: Introduce robust batch translation delimiters.
+- UX Improvements: Add multi-language UI hints for auto-generated captions.
+- Bug Fix: Restrict execution exclusively to YouTube watch pages.

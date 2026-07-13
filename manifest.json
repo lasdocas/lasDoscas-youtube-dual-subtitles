@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "3.5",
+  "version": "3.6.1",
   "description": "__MSG_extDesc__",
   "default_locale": "en",
   "author": "lasdocas",
@@ -32,21 +32,28 @@
       "128": "icon128.png"
     }
   },
-    "commands": {
+  "commands": {
     "toggle_fullscreen_settings": {
       "suggested_key": {
-        "default": "Alt+S",
-        "mac": "Alt+S"
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
       },
       "description": "__MSG_commandToggleDesc__"
     }
   },
   "content_scripts": [
     {
-      "matches": ["*://*.youtube.com/watch*"],
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["page-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
       "js": ["content.js"],
       "css": ["style.css"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "world": "ISOLATED"
     }
   ]
 }

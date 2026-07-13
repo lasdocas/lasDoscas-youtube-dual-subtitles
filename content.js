@@ -1,6 +1,110 @@
 let isOrphaned = false;
 let fullscreenSettingsIframe = null; 
 
+// ==========================================
+// 🚀 源语言状态与多语言提示字典
+// ==========================================
+let currentSourceLang = 'en';
+
+function isSpaceDelimitedLang(langCode) {
+  if (!langCode) return true;
+  const noSpaceLangs = ['ja', 'zh', 'zh-Hans', 'zh-Hant', 'zh-TW', 'zh-CN', 'ko'];
+  return !noSpaceLangs.includes(langCode);
+}
+
+function getHintMessage(targetLang) {
+  const lang = targetLang || 'en';
+  const prefix = lang.toLowerCase().split('-')[0];
+
+  const dict = {
+    'zh-CN': "[当前为自动生成字幕，已开启实时原声同步]",
+    'zh-TW': "[當前為自動生成字幕，已開啟實時原聲同步]",
+    'zh': "[当前为自动生成字幕，已开启实时原声同步]",
+    'es': "[Autogenerado: Sincronización en tiempo real activada]",
+    'fr': "[Sous-titres générés automatiquement: synchronisation en temps réel]",
+    'fr-CA': "[Sous-titres générés automatiquement: synchronisation en temps réel activée]",
+    'de': "[Automatisch erzeugte Untertitel: Echtzeitsynchronisation]",
+    'ja': "[自動生成字幕：リアルタイム同期が有効です]",
+    'ko': "[자동 생성 자막: 실시간 동기화 활성화됨]",
+    'pt': "[Gerado automaticamente: Sincronização em tempo real ativada]",
+    'id': "[Dihasilkan otomatis: Sinkronisasi waktu nyata diaktifkan]",
+    'ms': "[Dijana secara automatik: Penyegerakan masa nyata diaktifkan]",
+    'ru': "[Автоматические субтитры: синхронизация в реальном времени]",
+    'ar': "[تم الإنشاء تلقائيًا: تمت تمكين المزامنة في الوقت الفعلي]",
+    'hi': "[स्वतः उत्पन्न: रीयल-टाइम सिंक सक्षम]",
+    'ta': "[தானாக உருவாக்கப்பட்டவை: நிகழ்நேர ஒத்திசைவு இயக்கப்பட்டது]",
+    'th': "[สร้างอัตโนมัติ: เปิดใช้งานการซิงค์แบบเรียลไทม์]",
+    'vi': "[Được tạo tự động: Đã bật đồng bộ hóa theo thời gian thực]",
+    'tr': "[Otomatik oluşturuldu: Gerçek zamanlı senkronizasyon etkin]",
+    'pl': "[Wygenerowano automatycznie: Włączono synchronizację w czasie rzeczywistym]",
+    'nl': "[Automatisch gegenereerd: Realtime synchronisatie ingeschakeld]",
+    'sv': "[Autogenererad: Realtidssynkronisering aktiverad]",
+    'da': "[Automatisk genereret: Realtidssynkronisering aktiveret]",
+    'no': "[Autogenerert: Sanntidssynkronisering aktivert]",
+    'fi': "[Automaattisesti luotu: Reaaliaikainen synkronointi käytössä]",
+    'it': "[Generato automaticamente: Sincronizzazione in tempo reale attivata]",
+    'ro': "[Generat automat: Sincronizare în timp real activată]",
+    'hu': "[Automatikusan generált: Valós idejű szinkronizálás bekapcsolva]",
+    'cs': "[Automaticky generováno: Synchronizace v reálném čase povolena]",
+    'hr': "[Automatski generirano: Omogućena sinkronizacija u stvarnom vremenu]",
+    'el': "[Αυτόματη δημιουργία: Ενεργοποιήθηκε ο συγχρονισμός σε πραγματικό χρόνο]",
+    'iw': "[נוצר אוטומטית: סנכרון בזמן אמת מופעל]",
+    'tl': "[Awtomatikong nabuo: Na-enable ang real-time na pag-sync]",
+    'uk': "[Автоматично згенеровано: увімкнено синхронізацію в реальному часі]",
+    'eu': "[Automatikoki sortua: Denbora errealeko sinkronizazioa gaituta]",
+    'ca': "[Autogenerat: Sincronització en temps real activada]",
+    'gl': "[Xerado automaticamente: Sincronización en tempo real activada]",
+    'is': "[Sjálfvirkt framleitt: Rauntímasamstilling virk]",
+    'sw': "[Imetolewa kiotomatiki: Usawazishaji wa wakati halisi umewezeshwa]",
+    'et': "[Automaatselt loodud: Reaalajas sünkroonimine on lubatud]",
+    'lv': "[Automātiski ģenerēts: Iespējota reāllaika sinhronizācija]",
+    'lt': "[Automatiškai sugeneruota: Įjungtas sinchronizavimas realiuoju laiku]",
+    'sk': "[Automaticky generované: Synchronizácia v reálnom čase povolená]",
+    'sl': "[Samodejno ustvarjeno: Omogočena sinhronizacija v realnem času]",
+    'bg': "[Автоматично генерирано: Синхронизирането в реално време е активирано]",
+    'sr': "[Аутоматски генерисано: Синхронизација у реалном времену је омогућена]",
+    'ur': "[خود بخود تیار کردہ: ریئل ٹائم مطابقت پذیری فعال ہے]",
+    'fa': "[تولید خودکار: همگام‌سازی بی‌درنگ فعال شد]",
+    'mr': "[स्वयंचलितपणे व्युत्पन्न: रिअल-टाइम सिंक सक्षम]",
+    'bn': "[স্বয়ংক্রিয়ভাবে তৈরি: রিয়েল-টাইম সিঙ্ক সক্ষম করা হয়েছে]",
+    'gu': "[આપોઆપ જનરેટ થયેલ: રીઅલ-ટાઇમ સિંક સક્ષમ]",
+    'te': "[స్వయంచాలకంగా రూపొందించబడింది: నిజ-సమయ సమకాలీకరణ ప్రారంభించబడింది]",
+    'kn': "[ಸ್ವಯಂಚಾಲಿತವಾಗಿ ರಚಿಸಲಾಗಿದೆ: ನೈಜ-ಸಮಯದ ಸಿಂಕ್ ಸಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ]",
+    'ml': "[സ്വയമേവ സൃഷ്‌ടിച്ചത്: തത്സമയ സമന്വയം പ്രവർത്തനക്ഷമമാക്കി]",
+    'am': "[በራስ-ሰር የተፈጠረ፡ የእውነተኛ ጊዜ ማመሳሰል ነቅቷል]",
+    'en': "[Auto-generated: Real-time sync enabled]"
+  };
+
+  return dict[lang] || dict[prefix] || dict['en'];
+}
+
+function getAutoTranslateSelectionMessage(targetLang) {
+  const lang = targetLang || 'en';
+  const prefix = lang.toLowerCase().split('-')[0];
+  const dict = {
+    'zh-CN': '[请在 YouTube 字幕菜单中选择字幕或“自动生成”字幕，以便 lasDoscas 正常提供双语字幕]',
+    'zh-TW': '[請在 YouTube 字幕選單中選擇字幕或「自動產生」字幕，以便 lasDoscas 正常提供雙語字幕]',
+    'zh': '[请在 YouTube 字幕菜单中选择字幕或“自动生成”字幕，以便 lasDoscas 正常提供双语字幕]',
+    'en': '[Choose a caption track or an auto-generated caption track in YouTube so lasDoscas can provide bilingual subtitles]',
+    'es': '[Selecciona una pista de subtítulos o de subtítulos generados automáticamente en YouTube para usar los subtítulos bilingües de lasDoscas]',
+    'fr': '[Choisissez une piste de sous-titres ou de sous-titres générés automatiquement dans YouTube pour utiliser les sous-titres bilingues de lasDoscas]',
+    'de': '[Wählen Sie in YouTube eine Untertitelspur oder eine automatisch erzeugte Untertitelspur aus, damit lasDoscas zweisprachige Untertitel anzeigen kann]',
+    'ja': '[lasDoscas の二言語字幕を利用するには、YouTube で字幕または自動生成字幕を選択してください]',
+    'ko': '[lasDoscas 이중 언어 자막을 사용하려면 YouTube에서 자막 또는 자동 생성 자막을 선택하세요]',
+    'pt': '[Selecione uma faixa de legendas ou de legendas geradas automaticamente no YouTube para usar as legendas bilíngues do lasDoscas]',
+    'ru': '[Выберите обычные или автоматически созданные субтитры в YouTube, чтобы lasDoscas мог показывать двуязычные субтитры]',
+    'ar': '[اختر مسار ترجمة مصاحبة أو ترجمة مصاحبة تم إنشاؤها تلقائيًا في YouTube ليتمكن lasDoscas من عرض ترجمة ثنائية اللغة]',
+    'hi': '[lasDoscas के द्विभाषी उपशीर्षक उपयोग करने के लिए YouTube में उपशीर्षक या अपने-आप बने उपशीर्षक चुनें]',
+    'id': '[Pilih trek subtitel atau subtitel yang dibuat otomatis di YouTube agar lasDoscas dapat menampilkan subtitel dwibahasa]',
+    'vi': '[Hãy chọn phụ đề hoặc phụ đề được tạo tự động trong YouTube để lasDoscas có thể hiển thị phụ đề song ngữ]',
+    'it': '[Seleziona una traccia di sottotitoli o di sottotitoli generati automaticamente in YouTube per usare i sottotitoli bilingui di lasDoscas]',
+    'tr': '[lasDoscas iki dilli altyazıları kullanmak için YouTube’da bir altyazı parçası veya otomatik oluşturulan altyazı parçası seçin]',
+    'pl': '[Wybierz w YouTube ścieżkę napisów lub automatycznie wygenerowaną ścieżkę napisów, aby lasDoscas mógł wyświetlać napisy dwujęzyczne]',
+    'nl': '[Selecteer in YouTube een ondertitelspoor of een automatisch gegenereerd ondertitelspoor zodat lasDoscas tweetalige ondertitels kan tonen]'
+  };
+  return dict[lang] || dict[prefix] || dict.en;
+}
+
 function dieQuietly() {
   if (isOrphaned) return;
   isOrphaned = true; 
@@ -10,6 +114,9 @@ function dieQuietly() {
   if (playerResizeObserver) playerResizeObserver.disconnect();
   if (ccButtonObserver) ccButtonObserver.disconnect();
   if (containerMonitor) clearInterval(containerMonitor);
+  cancelTrackLoad();
+  stopFileRenderer();
+  resetLiveAsrBuffer();
   
   if (fullscreenSettingsIframe) {
     fullscreenSettingsIframe.remove();
@@ -32,6 +139,10 @@ function checkContext() {
   }
 }
 
+function isYouTubeWatchPage() {
+  return window.location.pathname === '/watch' && new URLSearchParams(window.location.search).has('v');
+}
+
 function getSmartDefaultLang() {
   const browserLang = navigator.language || 'en';
   const lowerLang = browserLang.toLowerCase();
@@ -47,7 +158,6 @@ function getSmartDefaultLang() {
     'ar', 'hi', 'ta', 'th', 'vi', 'tr', 'pl', 'nl', 'sv', 'da', 
     'no', 'fi', 'it', 'ro', 'hu', 'cs', 'hr', 'el', 'tl', 'uk', 
     'eu', 'ca', 'gl', 'is',
-    // 下面是新增的 17 种语言
     'sw', 'et', 'lv', 'lt', 'sk', 'sl', 'bg', 'sr', 'ur', 'fa', 
     'mr', 'bn', 'gu', 'te', 'kn', 'ml', 'am'
   ];
@@ -56,6 +166,7 @@ function getSmartDefaultLang() {
 }
 
 let lastText = "";
+let lastMatchedSource = "";
 let observer = null;
 let flexyObserver = null;
 let playerResizeObserver = null; 
@@ -64,11 +175,41 @@ let ccButtonObserver = null;
 let currentCaptionContainer = null;
 let containerMonitor = null;
 
-// ==========================================
-// 🚀 新增：预加载核心状态字典 (O(1) 零延迟架构)
-// ==========================================
+const TRACK_MODE = Object.freeze({
+  UNKNOWN: 'UNKNOWN',
+  DISCOVERING: 'DISCOVERING',
+  YOUTUBE_AUTO_TRANSLATE: 'YOUTUBE_AUTO_TRANSLATE',
+  FILE_WARMING: 'FILE_WARMING',
+  FILE_READY: 'FILE_READY',
+  LIVE_ASR: 'LIVE_ASR',
+  NO_CAPTIONS: 'NO_CAPTIONS',
+  RETRYABLE_ERROR: 'RETRYABLE_ERROR'
+});
+
+const PLAYER_BRIDGE_SOURCE = 'lasdoscas-player-bridge-v1';
+const PLAYER_SNAPSHOT_TIMEOUT_MS = 1500;
+const TRACK_RETRY_DELAYS_MS = [350, 900, 1800, 3200];
+const FILE_TRANSLATION_WAIT_MS = 1000;
+const LIVE_ASR_TRANSLATION_WAIT_MS = 800;
+const YOUTUBE_TRANSLATION_WARMUP_MS = 300;
+
+let trackMode = TRACK_MODE.UNKNOWN;
+let isAutoGenerated = false;
+let currentTrackKey = '';
+let trackLoadGeneration = 0;
+let trackAbortController = null;
+let trackRetryTimer = null;
+let fileRendererTimer = null;
+let fileCueFallbackTimer = null;
+let currentCueIndex = -1;
+let pendingFileCueIndex = -1;
+let renderedFileCueIndex = -1;
+let bridgeRequestSequence = 0;
+const bridgeRequests = new Map();
+const inflightTranslations = new Map();
+
 let preloadedTranslations = new Map();
-let isTrackPreloaded = false;
+let preloadedSentencesList = [];
 
 let currentSettings = {
   enabled: true,
@@ -106,13 +247,22 @@ try {
       currentSettings[key] = changes[key].newValue;
     }
     syncPluginState();
+    if (changes.showTrans && trackMode === TRACK_MODE.FILE_READY) {
+      clearTimeout(fileCueFallbackTimer);
+      pendingFileCueIndex = -1;
+      renderedFileCueIndex = -1;
+      renderFileCue();
+    }
     if (changes.lang || changes.enabled) {
       lastText = ""; 
-      // 如果语言改变，重新执行预加载
-      if (changes.lang && currentSettings.enabled) {
+      lastMatchedSource = "";
+      if (currentSettings.enabled) {
         preloadedTranslations.clear();
-        isTrackPreloaded = false;
-        preloadFullTrack();
+        beginTrackLoad('settings changed');
+      } else {
+        cancelTrackLoad();
+        stopFileRenderer();
+        resetLiveAsrBuffer();
       }
     }
   });
@@ -122,11 +272,12 @@ try {
 
 function syncPluginState() {
   if (isOrphaned) return;
-  
-  document.body.setAttribute('data-yt-dual-sub-active', currentSettings.enabled ? 'true' : 'false');
+  const shouldRun = currentSettings.enabled && isYouTubeWatchPage();
+
+  document.body.setAttribute('data-yt-dual-sub-active', shouldRun ? 'true' : 'false');
   
   const wrapper = document.querySelector('.custom-subtitle-wrapper');
-  if (!currentSettings.enabled) {
+  if (!shouldRun) {
     if (wrapper) wrapper.remove();
     if (flexyObserver) flexyObserver.disconnect();
     if (playerResizeObserver) playerResizeObserver.disconnect();
@@ -134,6 +285,9 @@ function syncPluginState() {
     
     if (observer) observer.disconnect();
     if (containerMonitor) clearInterval(containerMonitor);
+    cancelTrackLoad();
+    stopFileRenderer();
+    resetLiveAsrBuffer();
     currentCaptionContainer = null;
     
     clearSubtitleContent();
@@ -188,7 +342,12 @@ function applyStylesToDOM() {
     sourceText.style.setProperty('color', currentSettings.srcColor, 'important');
     sourceText.style.setProperty('font-weight', isSrcBold ? '800' : '400', 'important'); 
     sourceText.style.setProperty('--user-scale', srcScale, 'important');
-    sourceText.style.setProperty('display', currentSettings.showSrc ? 'block' : 'none', 'important');
+    const forceOperationalMessage = trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE;
+    sourceText.style.setProperty(
+      'display',
+      currentSettings.showSrc || forceOperationalMessage ? 'block' : 'none',
+      'important'
+    );
     
     if (needsAutoShadow) {
       sourceText.style.setProperty('text-shadow', autoShadowStyle, 'important');
@@ -240,12 +399,18 @@ function updateWrapperVisibility() {
   if (!wrapper) return;
   const ccBtn = document.querySelector('.ytp-subtitles-button');
   const isCcOn = ccBtn && ccBtn.getAttribute('aria-pressed') === 'true';
+  const canRenderWithoutCc = trackMode === TRACK_MODE.FILE_READY ||
+    trackMode === TRACK_MODE.LIVE_ASR ||
+    trackMode === TRACK_MODE.RETRYABLE_ERROR ||
+    trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE;
   const isFullscreen = wrapper.getAttribute('data-layout-mode') === 'fullscreen';
   
-  const isEmpty = !lastText; 
-  const bothHidden = !currentSettings.showSrc && !currentSettings.showTrans;
+  const isEmpty = !lastText && !lastMatchedSource;
+  const bothHidden = !currentSettings.showSrc &&
+    !currentSettings.showTrans &&
+    trackMode !== TRACK_MODE.YOUTUBE_AUTO_TRANSLATE;
 
-  if (!isCcOn || bothHidden) {
+  if (bothHidden || (!isCcOn && !canRenderWithoutCc)) {
     wrapper.style.setProperty('display', 'none', 'important');
   } else {
     if (isFullscreen && (currentSettings.fsBgStyle === 'none' || currentSettings.fsBgStyle === 'fit') && isEmpty) {
@@ -269,8 +434,6 @@ function ensureSubtitleContainer() {
   if (!wrapper) {
     wrapper = document.createElement('div');
     wrapper.className = 'custom-subtitle-wrapper';
-
-    // 🚀 新增：无障碍屏幕阅读器支持
     wrapper.setAttribute('role', 'status');
     wrapper.setAttribute('aria-live', 'polite');
     wrapper.setAttribute('aria-atomic', 'true');
@@ -422,13 +585,24 @@ function initCCButtonObserver() {
     if (!checkContext() || isOrphaned) return;
     if (!currentSettings.enabled) return;
     updateWrapperVisibility();
+
+    const isCcOn = ccBtn.getAttribute('aria-pressed') === 'true';
+    if (isCcOn &&
+        trackMode !== TRACK_MODE.FILE_READY &&
+        trackMode !== TRACK_MODE.FILE_WARMING &&
+        trackMode !== TRACK_MODE.YOUTUBE_AUTO_TRANSLATE &&
+        trackMode !== TRACK_MODE.DISCOVERING) {
+      beginTrackLoad('CC enabled');
+    }
   });
 
-  ccButtonObserver.observe(ccBtn, { attributes: true, attributeFilter: ['aria-pressed'] });
+  ccButtonObserver.observe(ccBtn, {
+    attributes: true,
+    attributeFilter: ['aria-pressed', 'aria-disabled']
+  });
 }
 
-// 优化后的 updateSubtitleContent
-function updateSubtitleContent(source, translated) {
+function updateSubtitleContent(source, translated, isHtmlFlag = false) {
   if (isOrphaned) return;
   const wrapper = ensureSubtitleContainer();
   if (!wrapper) return;
@@ -436,20 +610,17 @@ function updateSubtitleContent(source, translated) {
   const sourceText = wrapper.querySelector('.custom-source-text');
   const transText = wrapper.querySelector('.custom-translated-text');
 
-  // 1. 仅执行纯粹的 DOM 文本替换 (高频操作)
   if (sourceText) sourceText.textContent = source;
   if (transText) {
-    transText.textContent = translated || "";
-    if (!translated) transText.innerHTML = "&nbsp;"; 
+    if (isHtmlFlag && translated) {
+        transText.innerHTML = translated;
+    } else {
+        transText.textContent = translated || "";
+        if (!translated) transText.innerHTML = "&nbsp;";
+    }
   }
 
-  // 2. 仅保留轻量级的可见性更新
-  // 因为当字幕从“有文字”变为“无文字”时，外层容器的背景框可能需要隐藏
   updateWrapperVisibility(); 
-
-  // 🚀 核心优化：删除 applyStylesToDOM();
-  // 样式（字号、颜色、粗细、排版）现已完全交由 ResizeObserver, MutationObserver 和 storage 变化事件负责，
-  // 不再被高频的字幕文本切换强制触发。
 }
 
 function clearSubtitleContent() {
@@ -457,6 +628,7 @@ function clearSubtitleContent() {
   if (!wrapper) return;
   
   lastText = ""; 
+  lastMatchedSource = "";
 
   const srcNode = wrapper.querySelector('.custom-source-text');
   const transNode = wrapper.querySelector('.custom-translated-text');
@@ -482,13 +654,183 @@ function startContainerMonitor() {
     if (actualContainer && actualContainer !== currentCaptionContainer) {
       currentCaptionContainer = actualContainer;
       bindMutationObserver(actualContainer);
+    } else if (!actualContainer && currentCaptionContainer) {
+      currentCaptionContainer = null;
+      if (observer) observer.disconnect();
     }
   }, 1000);
 }
 
-// ==========================================
-// 🚀 核心更新：混合架构（预加载 O(1) + 强制同框渲染兜底）
-// ==========================================
+let translateDebounceTimer = null;
+let liveAsrCommitTimer = null;
+let liveAsrClearTimer = null;
+let liveAsrTranslationFallbackTimer = null;
+let liveAsrPendingText = '';
+let liveAsrCommittedText = '';
+let liveAsrRenderSequence = 0;
+
+function normalizeCaptionText(text) {
+  return (text || '').replace(/\s+/g, ' ').trim();
+}
+
+function getNativeCaptionText(containerTarget) {
+  const captionWindows = Array.from(containerTarget.querySelectorAll('.caption-window'));
+  return normalizeCaptionText(captionWindows.map((captionWindow) => {
+    const segments = Array.from(captionWindow.querySelectorAll('.ytp-caption-segment'));
+    const joinChar = isSpaceDelimitedLang(currentSourceLang) ? ' ' : '';
+    return segments.map((segment) => segment.textContent.trim()).join(joinChar);
+  }).join(' '));
+}
+
+function getAutoGeneratedHintHtml() {
+  if (!currentSettings.showTrans) return '';
+  const promptMsg = getHintMessage(currentSettings.lang);
+  return `<span style="opacity: 0.55; font-size: 0.65em; font-weight: normal;">${promptMsg}</span>`;
+}
+
+function resetLiveAsrBuffer() {
+  clearTimeout(liveAsrCommitTimer);
+  clearTimeout(liveAsrClearTimer);
+  clearTimeout(liveAsrTranslationFallbackTimer);
+  liveAsrCommitTimer = null;
+  liveAsrClearTimer = null;
+  liveAsrTranslationFallbackTimer = null;
+  liveAsrPendingText = '';
+  liveAsrCommittedText = '';
+  liveAsrRenderSequence += 1;
+}
+
+function commitLiveAsrSentence(text = liveAsrPendingText) {
+  const finalText = normalizeCaptionText(text);
+  if (!finalText || finalText === liveAsrCommittedText) return;
+
+  liveAsrCommittedText = finalText;
+  liveAsrPendingText = '';
+  const renderSequence = ++liveAsrRenderSequence;
+  const generation = trackLoadGeneration;
+  const cachedTranslation = preloadedTranslations.get(finalText);
+
+  const renderSentence = (translation, useHint = false) => {
+    if (renderSequence !== liveAsrRenderSequence || generation !== trackLoadGeneration) return;
+    lastText = finalText;
+    lastMatchedSource = '';
+    updateSubtitleContent(
+      finalText,
+      useHint ? getAutoGeneratedHintHtml() : translation,
+      useHint
+    );
+  };
+
+  clearTimeout(liveAsrTranslationFallbackTimer);
+  if (!currentSettings.showTrans) {
+    renderSentence('');
+    return;
+  }
+
+  if (cachedTranslation) {
+    renderSentence(cachedTranslation);
+    return;
+  }
+
+  // ASR captions are often emitted slightly before the matching audio. Use
+  // that headroom for translation, while keeping a bounded fallback so the
+  // original subtitle is never held back for too long.
+  liveAsrTranslationFallbackTimer = setTimeout(() => {
+    renderSentence('', true);
+  }, LIVE_ASR_TRANSLATION_WAIT_MS);
+
+  requestTranslation(finalText).then((translation) => {
+    if (!translation || renderSequence !== liveAsrRenderSequence || generation !== trackLoadGeneration) return;
+    clearTimeout(liveAsrTranslationFallbackTimer);
+    preloadedTranslations.set(finalText, translation);
+    renderSentence(translation);
+  });
+}
+
+function feedLiveAsrSnapshot(snapshot) {
+  let nextText = normalizeCaptionText(snapshot);
+  if (!nextText || nextText === liveAsrPendingText || nextText === liveAsrCommittedText) return;
+
+  if (/[.!?。！？…]$/.test(liveAsrCommittedText) && nextText.startsWith(liveAsrCommittedText)) {
+    nextText = normalizeCaptionText(nextText.slice(liveAsrCommittedText.length));
+    if (!nextText) return;
+  }
+
+  clearTimeout(liveAsrCommitTimer);
+  clearTimeout(liveAsrClearTimer);
+
+  if (liveAsrPendingText && !nextText.startsWith(liveAsrPendingText)) {
+    commitLiveAsrSentence(liveAsrPendingText);
+  }
+
+  liveAsrPendingText = nextText;
+  if (/[.!?。！？…]$/.test(nextText)) {
+    commitLiveAsrSentence(nextText);
+    return;
+  }
+
+  // YouTube ASR usually appends words every 50-250 ms. Waiting for a short
+  // stable window turns the rolling word stream into one phrase update.
+  liveAsrCommitTimer = setTimeout(() => {
+    commitLiveAsrSentence(liveAsrPendingText);
+  }, 450);
+}
+
+function scheduleLiveAsrClear(containerTarget) {
+  clearTimeout(liveAsrClearTimer);
+  liveAsrClearTimer = setTimeout(() => {
+    if (trackMode === TRACK_MODE.FILE_READY) return;
+    if (!containerTarget.querySelector('.caption-window')) {
+      resetLiveAsrBuffer();
+      clearSubtitleContent();
+    }
+  }, 1400);
+}
+
+function requestTranslation(text, lang = currentSettings.lang) {
+  return new Promise((resolve) => {
+    if (!text || isOrphaned || !currentSettings.enabled) {
+      resolve('');
+      return;
+    }
+
+    try {
+      chrome.runtime.sendMessage({ action: 'translate', text, lang }, (response) => {
+        if (chrome.runtime.lastError) {
+          if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) {
+            dieQuietly();
+          }
+          resolve('');
+          return;
+        }
+        resolve(response?.translation?.trim() || '');
+      });
+    } catch (error) {
+      if (error.message?.includes('Extension context invalidated')) dieQuietly();
+      resolve('');
+    }
+  });
+}
+
+function renderDomTranslationFallback(currentText) {
+  if (currentText === lastText) return;
+
+  lastText = currentText;
+  lastMatchedSource = '';
+  updateSubtitleContent(currentText, preloadedTranslations.get(currentText) || '');
+  clearTimeout(translateDebounceTimer);
+
+  translateDebounceTimer = setTimeout(async () => {
+    const generation = trackLoadGeneration;
+    const targetLang = currentSettings.lang;
+    const translation = await requestTranslation(currentText, targetLang);
+    if (!translation || generation !== trackLoadGeneration || currentText !== lastText) return;
+
+    preloadedTranslations.set(currentText, translation);
+    updateSubtitleContent(currentText, translation);
+  }, 250);
+}
+
 function bindMutationObserver(containerTarget) {
   if (observer) observer.disconnect();
   if (!containerTarget) return;
@@ -500,232 +842,615 @@ function bindMutationObserver(containerTarget) {
     }
     if (!currentSettings.enabled) return;
 
+    if (trackMode === TRACK_MODE.FILE_WARMING ||
+        trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE) return;
+
+    if (trackMode === TRACK_MODE.FILE_READY) {
+      renderFileCue();
+      return;
+    }
+
     const captionWindow = containerTarget.querySelector('.caption-window');
     if (!captionWindow) {
-      clearSubtitleContent();
+      if (liveAsrPendingText) commitLiveAsrSentence();
+      scheduleLiveAsrClear(containerTarget);
       return;
     }
 
-    const segments = Array.from(captionWindow.querySelectorAll('.ytp-caption-segment'));
-    const currentText = segments.map(s => s.textContent.trim()).join(' ');
+    const currentText = getNativeCaptionText(containerTarget);
 
     if (!currentText) {
-      clearSubtitleContent();
+      scheduleLiveAsrClear(containerTarget);
       return;
     }
 
-    if (currentText !== lastText) {
-      lastText = currentText;
-
-      // 1. 尝试从本地预加载字典中极速获取 (O(1))
-      if (isTrackPreloaded && preloadedTranslations.has(currentText)) {
-        const translatedText = preloadedTranslations.get(currentText);
-        // 缓存命中：瞬间同框上屏！
-        updateSubtitleContent(currentText, translatedText);
-      } else {
-        // 2. 兜底方案 (Fallback) - 视觉完整性优先模式
-        // 注意：这里【绝对不】提前调用 updateSubtitleContent。
-        // 宁愿屏幕上暂时保留上一句，或者保持空白，也要死等翻译结果，确保一出现就是完整的双语。
-
-        try {
-          chrome.runtime.sendMessage({ 
-            action: "translate", 
-            text: currentText, 
-            lang: currentSettings.lang 
-          }, (response) => {
-            if (chrome.runtime.lastError) {
-              const errMsg = chrome.runtime.lastError.message || "";
-              if (errMsg.includes("Extension context invalidated")) {
-                dieQuietly();
-              }
-              return;
-            }
-            
-            if (isOrphaned) return;
-
-            // 核心防错机制：如果网络请求耗时过长，当前视频已经切到下一句话了，
-            // 这条迟到的翻译必须直接丢弃，否则会导致“旧字幕覆盖新画面”的灾难体验。
-            if (currentText === lastText) {
-              if (response && response.translation) {
-                // 拿到结果了，第一和第二字幕正式“同框上屏”
-                updateSubtitleContent(currentText, response.translation);
-                // 顺手存入缓存，下次如果你倒退视频重看这句，就是零延迟了！
-                preloadedTranslations.set(currentText, response.translation);
-              } else {
-                // 极端情况：API 彻底失败没返回译文。
-                // 为了不影响基本观影，只能退让一步，单显原文。
-                updateSubtitleContent(currentText, "");
-              }
-            }
-          });
-        } catch (error) {
-          if (error.message && error.message.includes("Extension context invalidated")) {
-            dieQuietly();
-          }
-        }
-      }
+    if (isAutoGenerated || trackMode === TRACK_MODE.LIVE_ASR) {
+      feedLiveAsrSnapshot(currentText);
+      return;
     }
+
+    renderDomTranslationFallback(currentText);
   });
 
   observer.observe(containerTarget, { childList: true, subtree: true });
 }
 
-// ==========================================
-// 🚀 新增：预加载工作流引擎
-// ==========================================
-async function fetchCaptionsData() {
-  try {
-    const scripts = document.querySelectorAll('script');
-    let playerDataStr = null;
-    
-    for (const script of scripts) {
-      if (script.textContent && script.textContent.includes('ytInitialPlayerResponse')) {
-        const match = script.textContent.match(/ytInitialPlayerResponse\s*=\s*(\{.*?\});/);
-        if (match && match[1]) {
-          playerDataStr = match[1];
-          break;
-        }
-      }
-    }
+function handlePlayerBridgeMessage(event) {
+  if (event.source !== window || event.origin !== window.location.origin) return;
+  const message = event.data;
+  if (!message || message.source !== PLAYER_BRIDGE_SOURCE) return;
 
-    if (!playerDataStr) return null;
-
-    const playerData = JSON.parse(playerDataStr);
-    const captions = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    
-    if (!captions || captions.length === 0) return null;
-
-    let selectedTrack = captions.find(track => track.vssId.startsWith('a.') || track.languageCode === 'en') || captions[0];
-    
-    return selectedTrack.baseUrl;
-
-  } catch (error) {
-    console.warn("lasDoscas: 无法解析 YouTube 播放器数据", error);
-    return null;
-  }
-}
-
-async function downloadAndParseSubtitles(trackUrl) {
-  try {
-    const url = new URL(trackUrl);
-    url.searchParams.set('fmt', 'json3');
-    
-    const response = await fetch(url.toString());
-    
-    // 1. 检查 HTTP 状态码是否正常
-    if (!response.ok) {
-      console.warn(`lasDoscas: 预加载中止，服务器返回状态码 ${response.status}`);
-      return [];
-    }
-    
-    // 2. 先作为纯文本读取，避免直接执行 .json() 崩溃
-    const text = await response.text();
-    if (!text || text.trim() === '') {
-      // console.warn("lasDoscas: 预加载中止，收到空字幕数据");
-      return [];
-    }
-
-    // 3. 安全地尝试解析 JSON
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (parseError) {
-      console.warn("lasDoscas: 预加载中止，JSON 格式解析失败");
-      return []; // 解析失败就温和地返回空数组，不要让整个扩展崩溃
-    }
-    
-    let allSentences = new Set();
-    
-    if (data && data.events) {
-      data.events.forEach(event => {
-        if (event.segs) {
-          const segText = event.segs.map(seg => seg.utf8).join('').replace(/\n/g, ' ').trim();
-          if (segText) {
-            allSentences.add(segText);
-          }
-        }
-      });
-    }
-    
-    return Array.from(allSentences);
-  } catch (error) {
-    // 捕获网络断开等其他严重错误
-    console.warn("lasDoscas: 下载字幕文件遇到网络错误", error.message);
-    return [];
-  }
-}
-
-async function preloadFullTrack() {
-  if (isOrphaned || !currentSettings.enabled) return;
-  
-  console.log("lasDoscas: 开始预加载全片字幕...");
-
-  const trackUrl = await fetchCaptionsData();
-  if (!trackUrl) {
-    console.log("lasDoscas: 未找到可用的字幕轨。");
+  if (message.type === 'SNAPSHOT_RESPONSE') {
+    const pendingRequest = bridgeRequests.get(message.requestId);
+    if (!pendingRequest) return;
+    clearTimeout(pendingRequest.timeoutId);
+    bridgeRequests.delete(message.requestId);
+    pendingRequest.resolve(message.snapshot || null);
     return;
   }
 
-  const sourceSentences = await downloadAndParseSubtitles(trackUrl);
-  console.log(`lasDoscas: 成功提取 ${sourceSentences.length} 条字幕记录，开始后台静默翻译...`);
-
-  // 更加保守的限流配置：每批处理 3 句，间隔 800ms
-  const batchSize = 3;
-  for (let i = 0; i < sourceSentences.length; i += batchSize) {
-    if (isOrphaned || !currentSettings.enabled) break;
-
-    const batch = sourceSentences.slice(i, i + batchSize);
-    
-    const promises = batch.map(text => {
-        if (preloadedTranslations.has(text)) return Promise.resolve();
-
-        return new Promise((resolve) => {
-            chrome.runtime.sendMessage({ 
-                action: "translate", 
-                text: text, 
-                lang: currentSettings.lang 
-            }, (response) => {
-                if (chrome.runtime.lastError) return resolve();
-                if (response && response.translation) {
-                    preloadedTranslations.set(text, response.translation);
-                }
-                resolve();
-            });
-        });
-    });
-
-    await Promise.all(promises);
-    
-    // 强制休眠 800ms 以保护 API，防止触发 429 报错
-    await new Promise(r => setTimeout(r, 800)); 
+  if (message.type === 'TRACK_CHANGED' && currentSettings.enabled && !isOrphaned) {
+    const nextTrackKey = message.snapshot?.trackKey || '';
+    if (currentTrackKey && nextTrackKey && nextTrackKey !== currentTrackKey) {
+      beginTrackLoad('YouTube caption track changed');
+    }
   }
-
-  isTrackPreloaded = true;
-  console.log("lasDoscas: 全片字幕预加载完成！现已开启零延迟渲染模式。");
 }
 
-// 确保在页面初次加载时也能自动启动预加载
-setTimeout(() => {
-  if (checkContext() && !isOrphaned && currentSettings.enabled && !isTrackPreloaded) {
-    preloadFullTrack();
+window.addEventListener('message', handlePlayerBridgeMessage);
+
+function requestPlayerSnapshot() {
+  return new Promise((resolve) => {
+    const requestId = `${Date.now()}-${++bridgeRequestSequence}`;
+    const timeoutId = setTimeout(() => {
+      bridgeRequests.delete(requestId);
+      resolve(null);
+    }, PLAYER_SNAPSHOT_TIMEOUT_MS);
+
+    bridgeRequests.set(requestId, { resolve, timeoutId });
+    window.postMessage({
+      source: PLAYER_BRIDGE_SOURCE,
+      type: 'REQUEST_SNAPSHOT',
+      requestId
+    }, window.location.origin);
+  });
+}
+
+function cancelTrackLoad() {
+  trackLoadGeneration += 1;
+  clearTimeout(trackRetryTimer);
+  clearTimeout(translateDebounceTimer);
+  trackRetryTimer = null;
+  translateDebounceTimer = null;
+  if (trackAbortController) trackAbortController.abort();
+  trackAbortController = null;
+  inflightTranslations.clear();
+}
+
+function beginTrackLoad(reason = 'refresh') {
+  if (isOrphaned || !currentSettings.enabled || !isYouTubeWatchPage()) return;
+
+  cancelTrackLoad();
+  stopFileRenderer();
+  resetLiveAsrBuffer();
+  clearSubtitleContent();
+
+  const generation = trackLoadGeneration;
+  trackMode = TRACK_MODE.DISCOVERING;
+  isAutoGenerated = false;
+  currentTrackKey = '';
+  currentCueIndex = -1;
+  preloadedTranslations.clear();
+  preloadedSentencesList = [];
+  applyStylesToDOM();
+
+  console.log(`lasDoscas: 开始识别字幕轨道 (${reason})...`);
+  preloadFullTrack(generation, 0);
+}
+
+function showYouTubeAutoTranslateWarning() {
+  stopFileRenderer();
+  resetLiveAsrBuffer();
+  const message = getAutoTranslateSelectionMessage(currentSettings.lang);
+  lastText = message;
+  lastMatchedSource = '';
+  updateSubtitleContent(message, '');
+  applyStylesToDOM();
+}
+
+function scheduleTrackRetry(generation, attempt, terminalMode, reason) {
+  if (generation !== trackLoadGeneration || isOrphaned || !currentSettings.enabled) return;
+
+  if (attempt >= TRACK_RETRY_DELAYS_MS.length) {
+    trackMode = terminalMode;
+    console.info(`lasDoscas: 字幕轨道预加载未完成，进入 ${terminalMode} 模式：${reason}`);
+    updateWrapperVisibility();
+    return;
   }
-}, 2000);
+
+  const delay = TRACK_RETRY_DELAYS_MS[attempt];
+  trackRetryTimer = setTimeout(() => preloadFullTrack(generation, attempt + 1), delay);
+}
+
+async function downloadCaptionJson3(trackUrl, signal, targetLang = '') {
+  const url = new URL(trackUrl);
+  url.searchParams.set('fmt', 'json3');
+  if (targetLang) url.searchParams.set('tlang', targetLang);
+
+  const response = await fetch(url.toString(), { signal, credentials: 'include' });
+  if (!response.ok) throw new Error(`字幕服务器返回 ${response.status}`);
+
+  const text = await response.text();
+  if (!text.trim()) throw new Error('字幕文件为空');
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    throw new Error('字幕文件不是有效的 JSON3');
+  }
+
+  if (!Array.isArray(data.events)) throw new Error('字幕文件不包含 events');
+  return data;
+}
+
+async function downloadAndParseSubtitles(trackUrl, signal) {
+  const data = await downloadCaptionJson3(trackUrl, signal);
+
+  const cues = [];
+  const useSpace = isSpaceDelimitedLang(currentSourceLang);
+  const maxLength = useSpace ? 90 : 45;
+  let buffer = '';
+  let bufferStart = -1;
+  let bufferEnd = -1;
+  let bufferEventStartIndex = -1;
+  let bufferEventEndIndex = -1;
+
+  const flushBuffer = () => {
+    const finalText = normalizeCaptionText(buffer);
+    if (finalText && bufferStart >= 0) {
+      cues.push({
+        text: finalText,
+        start: bufferStart,
+        end: Math.max(bufferEnd, bufferStart + 1.2),
+        eventStartIndex: bufferEventStartIndex,
+        eventEndIndex: bufferEventEndIndex
+      });
+    }
+    buffer = '';
+    bufferStart = -1;
+    bufferEnd = -1;
+    bufferEventStartIndex = -1;
+    bufferEventEndIndex = -1;
+  };
+
+  data.events.forEach((event, eventIndex) => {
+    if (!Array.isArray(event.segs)) return;
+    const segmentText = normalizeCaptionText(
+      event.segs.map((segment) => segment.utf8 || '').join('').replace(/\n/g, ' ')
+    );
+    if (!segmentText) return;
+
+    const start = Number(event.tStartMs || 0) / 1000;
+    const duration = Number(event.dDurationMs || 0) / 1000;
+    const end = start + Math.max(duration, 0.6);
+    const gap = bufferEnd >= 0 ? start - bufferEnd : 0;
+
+    if (buffer && gap > 0.85) flushBuffer();
+    if (!buffer) {
+      bufferStart = start;
+      bufferEventStartIndex = eventIndex;
+    }
+    bufferEventEndIndex = eventIndex;
+
+    // Some ASR JSON3 tracks repeatedly send an expanded version of the same
+    // line. Replace that rolling snapshot instead of duplicating its words.
+    if (buffer && segmentText.startsWith(buffer) && start <= bufferEnd + 0.1) {
+      buffer = segmentText;
+    } else if (!buffer.endsWith(segmentText)) {
+      buffer += `${buffer && useSpace ? ' ' : ''}${segmentText}`;
+    }
+    bufferEnd = Math.max(bufferEnd, end);
+
+    if (/[.!?。！？…]$/.test(segmentText) || buffer.length >= maxLength) flushBuffer();
+  });
+  flushBuffer();
+
+  cues.sort((a, b) => a.start - b.start);
+  cues.forEach((cue, index) => {
+    const nextCue = cues[index + 1];
+    if (nextCue && cue.end >= nextCue.start) cue.end = Math.max(cue.start + 0.5, nextCue.start - 0.04);
+  });
+
+  if (!cues.length) throw new Error('字幕文件没有可显示文本');
+  return cues;
+}
+
+function seedTranslationsFromYouTubeTrack(sourceCues, translatedData, targetLang) {
+  if (!Array.isArray(translatedData?.events)) return 0;
+
+  const useSpace = isSpaceDelimitedLang(targetLang);
+  const mappedPairs = [];
+
+  sourceCues.forEach((cue) => {
+    if (cue.eventStartIndex < 0 || cue.eventEndIndex < cue.eventStartIndex) return;
+    const translatedAnchor = translatedData.events[cue.eventStartIndex];
+    const translatedAnchorStart = Number(translatedAnchor?.tStartMs || 0) / 1000;
+    if (!translatedAnchor || Math.abs(translatedAnchorStart - cue.start) > 2.5) return;
+
+    let translatedText = '';
+    for (let index = cue.eventStartIndex; index <= cue.eventEndIndex; index++) {
+      const event = translatedData.events[index];
+      if (!Array.isArray(event?.segs)) continue;
+      const eventText = normalizeCaptionText(
+        event.segs.map((segment) => segment.utf8 || '').join('').replace(/\n/g, ' ')
+      );
+      if (!eventText) continue;
+
+      // Translated ASR tracks can also contain rolling snapshots. Keep the
+      // expanded snapshot rather than appending the same words twice.
+      if (translatedText && eventText.startsWith(translatedText)) {
+        translatedText = eventText;
+      } else if (!translatedText.endsWith(eventText)) {
+        translatedText += `${translatedText && useSpace ? ' ' : ''}${eventText}`;
+      }
+    }
+
+    translatedText = normalizeCaptionText(translatedText);
+    if (translatedText) {
+      mappedPairs.push([cue.text, translatedText]);
+    }
+  });
+
+  const sourcePrefix = (currentSourceLang || '').toLowerCase().split('-')[0];
+  const targetPrefix = (targetLang || '').toLowerCase().split('-')[0];
+  if (sourcePrefix !== targetPrefix && mappedPairs.length >= 3) {
+    const identicalCount = mappedPairs.filter(([source, translation]) => source === translation).length;
+    if (identicalCount / mappedPairs.length > 0.8) return 0;
+  }
+
+  mappedPairs.forEach(([source, translation]) => {
+    preloadedTranslations.set(source, translation);
+  });
+  return mappedPairs.length;
+}
+
+function waitForTranslationWarmup(translationPromise) {
+  return Promise.race([
+    translationPromise,
+    new Promise((resolve) => setTimeout(() => resolve(null), YOUTUBE_TRANSLATION_WARMUP_MS))
+  ]);
+}
+
+function findCueIndexAtTime(time) {
+  if (!preloadedSentencesList.length || time < 0) return -1;
+
+  const currentCue = preloadedSentencesList[currentCueIndex];
+  if (currentCue && time >= currentCue.start && time <= currentCue.end + 0.45) {
+    return currentCueIndex;
+  }
+
+  let low = 0;
+  let high = preloadedSentencesList.length - 1;
+  let candidate = -1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (preloadedSentencesList[middle].start <= time) {
+      candidate = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+
+  if (candidate < 0) return -1;
+  const cue = preloadedSentencesList[candidate];
+  return time <= cue.end + 0.45 ? candidate : -1;
+}
+
+function findNextCueIndexAtTime(time) {
+  const activeIndex = findCueIndexAtTime(time);
+  if (activeIndex >= 0) return activeIndex;
+
+  let low = 0;
+  let high = preloadedSentencesList.length - 1;
+  let candidate = -1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (preloadedSentencesList[middle].start >= time) {
+      candidate = middle;
+      high = middle - 1;
+    } else {
+      low = middle + 1;
+    }
+  }
+  return candidate;
+}
+
+function getTranslationRequestKey(sourceText, generation, lang = currentSettings.lang) {
+  return `${generation}|${lang}|${sourceText}`;
+}
+
+async function ensureCueTranslation(sourceText, generation = trackLoadGeneration) {
+  if (!sourceText || preloadedTranslations.has(sourceText)) return;
+  const requestKey = getTranslationRequestKey(sourceText, generation);
+  if (inflightTranslations.has(requestKey)) return inflightTranslations.get(requestKey);
+
+  const request = requestTranslation(sourceText).then((translation) => {
+    inflightTranslations.delete(requestKey);
+    if (!translation || generation !== trackLoadGeneration) return;
+    preloadedTranslations.set(sourceText, translation);
+    if (sourceText === lastMatchedSource) updateSubtitleContent(sourceText, translation);
+  });
+  inflightTranslations.set(requestKey, request);
+  return request;
+}
+
+function displayFileCue(cueIndex, translation = '', useHint = false) {
+  const cue = preloadedSentencesList[cueIndex];
+  if (!cue || cueIndex !== currentCueIndex || trackMode !== TRACK_MODE.FILE_READY) return;
+
+  renderedFileCueIndex = cueIndex;
+  pendingFileCueIndex = -1;
+  lastMatchedSource = cue.text;
+  lastText = cue.text;
+  updateSubtitleContent(
+    cue.text,
+    useHint ? getAutoGeneratedHintHtml() : translation,
+    useHint
+  );
+}
+
+function renderFileCue() {
+  if (trackMode !== TRACK_MODE.FILE_READY || isOrphaned || !currentSettings.enabled) return;
+  const video = document.querySelector('video');
+  if (!video) return;
+
+  const nextCueIndex = findCueIndexAtTime(video.currentTime);
+  if (nextCueIndex < 0) {
+    clearTimeout(fileCueFallbackTimer);
+    pendingFileCueIndex = -1;
+    renderedFileCueIndex = -1;
+    if (lastMatchedSource || lastText) clearSubtitleContent();
+    currentCueIndex = -1;
+    return;
+  }
+
+  currentCueIndex = nextCueIndex;
+  const cue = preloadedSentencesList[nextCueIndex];
+  if (nextCueIndex === renderedFileCueIndex || nextCueIndex === pendingFileCueIndex) return;
+
+  clearTimeout(fileCueFallbackTimer);
+  pendingFileCueIndex = nextCueIndex;
+  const translation = preloadedTranslations.get(cue.text);
+  if (!currentSettings.showTrans) {
+    displayFileCue(nextCueIndex, '');
+    return;
+  }
+
+  if (translation) {
+    displayFileCue(nextCueIndex, translation);
+    return;
+  }
+
+  // Hold the new source line briefly so source and translation can be painted
+  // together. The previous completed cue remains visible during this window.
+  fileCueFallbackTimer = setTimeout(() => {
+    if (nextCueIndex !== currentCueIndex || pendingFileCueIndex !== nextCueIndex) return;
+    displayFileCue(nextCueIndex, '', isAutoGenerated);
+  }, FILE_TRANSLATION_WAIT_MS);
+
+  ensureCueTranslation(cue.text).then(() => {
+    if (nextCueIndex !== currentCueIndex || pendingFileCueIndex !== nextCueIndex) return;
+    const readyTranslation = preloadedTranslations.get(cue.text);
+    if (!readyTranslation) return;
+    clearTimeout(fileCueFallbackTimer);
+    displayFileCue(nextCueIndex, readyTranslation);
+  });
+}
+
+function startFileRenderer() {
+  stopFileRenderer();
+  renderFileCue();
+  fileRendererTimer = setInterval(renderFileCue, 100);
+}
+
+function stopFileRenderer() {
+  if (fileRendererTimer) clearInterval(fileRendererTimer);
+  clearTimeout(fileCueFallbackTimer);
+  fileRendererTimer = null;
+  fileCueFallbackTimer = null;
+  currentCueIndex = -1;
+  pendingFileCueIndex = -1;
+  renderedFileCueIndex = -1;
+}
+
+async function translateBatch(batch, generation) {
+  if (!batch.length || generation !== trackLoadGeneration) return;
+  const delimiter = '\n\n[[[LASDOSCAS_BREAK_9F2D]]]\n\n';
+  const translated = await requestTranslation(batch.join(delimiter));
+  if (generation !== trackLoadGeneration) return;
+
+  const parts = translated
+    ? translated.split(/\s*\[\[\[\s*LASDOSCAS_BREAK_9F2D\s*\]\]\]\s*/i)
+    : [];
+
+  if (parts.length === batch.length) {
+    batch.forEach((sourceText, index) => {
+      const translation = parts[index]?.trim();
+      if (translation) preloadedTranslations.set(sourceText, translation);
+    });
+  } else {
+    // Google occasionally translates or removes the delimiter. Retry this
+    // batch in small groups so cue-to-translation mapping cannot shift.
+    for (let i = 0; i < batch.length; i += 3) {
+      const group = batch.slice(i, i + 3);
+      await Promise.all(group.map((sourceText) => ensureCueTranslation(sourceText, generation)));
+      if (generation !== trackLoadGeneration) return;
+    }
+  }
+
+  const visibleTranslation = preloadedTranslations.get(lastMatchedSource);
+  if (visibleTranslation && generation === trackLoadGeneration) {
+    updateSubtitleContent(lastMatchedSource, visibleTranslation);
+  }
+}
+
+async function preloadTranslations(generation) {
+  const video = document.querySelector('video');
+  const playhead = video?.currentTime || 0;
+  const nearestIndex = Math.max(0, findNextCueIndexAtTime(playhead));
+  const priorityCues = [
+    ...preloadedSentencesList.slice(nearestIndex, nearestIndex + 24),
+    ...preloadedSentencesList.slice(0, nearestIndex),
+    ...preloadedSentencesList.slice(nearestIndex + 24)
+  ];
+  const sourceSentences = Array.from(new Set(priorityCues.map((cue) => cue.text)));
+  const batchSize = 16;
+
+  for (let index = 0; index < sourceSentences.length; index += batchSize) {
+    if (generation !== trackLoadGeneration || isOrphaned || !currentSettings.enabled) return;
+    const batch = sourceSentences
+      .slice(index, index + batchSize)
+      .filter((text) =>
+        !preloadedTranslations.has(text) &&
+        !inflightTranslations.has(getTranslationRequestKey(text, generation))
+      );
+    await translateBatch(batch, generation);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+
+  if (generation === trackLoadGeneration) {
+    console.log('lasDoscas: 全片字幕翻译预加载完成。');
+  }
+}
+
+async function preloadFullTrack(generation, attempt) {
+  if (generation !== trackLoadGeneration || isOrphaned || !currentSettings.enabled) return;
+
+  const snapshot = await requestPlayerSnapshot();
+  if (generation !== trackLoadGeneration) return;
+
+  const selectedTrack = snapshot?.selectedTrack;
+  currentTrackKey = snapshot?.trackKey || '';
+
+  if (snapshot?.isAutoTranslated) {
+    trackMode = TRACK_MODE.YOUTUBE_AUTO_TRANSLATE;
+    isAutoGenerated = false;
+    preloadedTranslations.clear();
+    preloadedSentencesList = [];
+    showYouTubeAutoTranslateWarning();
+    console.info(
+      `lasDoscas: 检测到 YouTube 自动翻译 (${snapshot.autoTranslationLanguageCode || 'unknown'})，等待用户选择原始字幕轨。`
+    );
+    return;
+  }
+
+  if (!selectedTrack) {
+    const hasNativeCaptionDom = Boolean(document.querySelector('.ytp-caption-segment'));
+    const terminalMode = hasNativeCaptionDom ? TRACK_MODE.RETRYABLE_ERROR : TRACK_MODE.NO_CAPTIONS;
+    scheduleTrackRetry(generation, attempt, terminalMode, '播放器尚未提供字幕轨道');
+    return;
+  }
+
+  currentSourceLang = selectedTrack.languageCode || 'en';
+  isAutoGenerated = selectedTrack.kind === 'asr' || selectedTrack.vssId?.startsWith('a.');
+
+  if (!selectedTrack.baseUrl) {
+    scheduleTrackRetry(
+      generation,
+      attempt,
+      isAutoGenerated ? TRACK_MODE.LIVE_ASR : TRACK_MODE.RETRYABLE_ERROR,
+      '当前字幕轨道没有可下载 URL'
+    );
+    return;
+  }
+
+  // Suppress the DOM fallback while the source and translated files are being
+  // fetched, otherwise the original line can paint before the warmup finishes.
+  trackMode = TRACK_MODE.FILE_WARMING;
+
+  try {
+    trackAbortController = new AbortController();
+    const youtubeTranslationPromise = currentSettings.showTrans
+      ? downloadCaptionJson3(
+          selectedTrack.baseUrl,
+          trackAbortController.signal,
+          currentSettings.lang
+        ).catch((error) => {
+          if (error.name !== 'AbortError') {
+            console.info(`lasDoscas: YouTube 翻译轨不可用，已回退到逐句翻译：${error.message}`);
+          }
+          return null;
+        })
+      : Promise.resolve(null);
+
+    const cues = await downloadAndParseSubtitles(selectedTrack.baseUrl, trackAbortController.signal);
+    if (generation !== trackLoadGeneration) return;
+
+    resetLiveAsrBuffer();
+    preloadedSentencesList = cues;
+
+    let youtubeTranslationApplied = false;
+    const applyYouTubeTranslation = (translatedData) => {
+      if (!translatedData || youtubeTranslationApplied || generation !== trackLoadGeneration) return 0;
+      const mappedCount = seedTranslationsFromYouTubeTrack(cues, translatedData, currentSettings.lang);
+      youtubeTranslationApplied = mappedCount > 0;
+      if (mappedCount > 0) {
+        console.log(`lasDoscas: 已从 YouTube 翻译轨映射 ${mappedCount}/${cues.length} 条译文。`);
+      }
+      return mappedCount;
+    };
+
+    const warmTranslationData = await waitForTranslationWarmup(youtubeTranslationPromise);
+    if (generation !== trackLoadGeneration) return;
+    applyYouTubeTranslation(warmTranslationData);
+    trackMode = TRACK_MODE.FILE_READY;
+
+    console.log(`lasDoscas: 已加载 ${cues.length} 条字幕，启用独立时间轴双语渲染。`);
+    const video = document.querySelector('video');
+    const initialCueIndex = findNextCueIndexAtTime(video?.currentTime || 0);
+    if (initialCueIndex >= 0 && !preloadedTranslations.has(cues[initialCueIndex].text)) {
+      ensureCueTranslation(cues[initialCueIndex].text, generation);
+    }
+    startFileRenderer();
+    preloadTranslations(generation);
+
+    youtubeTranslationPromise.then((translatedData) => {
+      if (!applyYouTubeTranslation(translatedData)) return;
+      clearTimeout(fileCueFallbackTimer);
+      pendingFileCueIndex = -1;
+      renderedFileCueIndex = -1;
+      renderFileCue();
+    });
+  } catch (error) {
+    if (error.name === 'AbortError' || generation !== trackLoadGeneration) return;
+    trackMode = isAutoGenerated ? TRACK_MODE.LIVE_ASR : TRACK_MODE.DISCOVERING;
+    scheduleTrackRetry(
+      generation,
+      attempt,
+      isAutoGenerated ? TRACK_MODE.LIVE_ASR : TRACK_MODE.RETRYABLE_ERROR,
+      error.message
+    );
+  }
+}
+
+setTimeout(() => {
+  if (checkContext() && !isOrphaned && currentSettings.enabled && isYouTubeWatchPage()) {
+    beginTrackLoad('initial load');
+  }
+}, 800);
 
 window.addEventListener('yt-navigate-finish', () => {
   if (!checkContext() || isOrphaned) return;
-  lastText = "";
   currentCaptionContainer = null;
-  
-  // 清理之前的预加载数据
-  preloadedTranslations.clear();
-  isTrackPreloaded = false;
 
   const oldWrapper = document.querySelector('.custom-subtitle-wrapper');
   if (oldWrapper) oldWrapper.remove();
   syncPluginState();
 
-  if (currentSettings.enabled) {
-    preloadFullTrack();
+  if (currentSettings.enabled && isYouTubeWatchPage()) {
+    setTimeout(() => beginTrackLoad('YouTube navigation'), 200);
   }
 });
 
@@ -733,7 +1458,7 @@ loadAndApplySettings();
 
 function toggleFullscreenSettings() {
   if (isOrphaned) return;
-  
+
   const moviePlayer = document.querySelector('#movie_player');
   if (!moviePlayer) return;
 
@@ -750,6 +1475,7 @@ function toggleFullscreenSettings() {
   fullscreenSettingsIframe.style.setProperty('top', '60px', 'important');
   fullscreenSettingsIframe.style.setProperty('right', '20px', 'important');
   fullscreenSettingsIframe.style.setProperty('width', '348px', 'important');
+
   fullscreenSettingsIframe.style.setProperty('height', '500px', 'important'); 
   
   fullscreenSettingsIframe.style.setProperty('border', 'none', 'important');
@@ -771,11 +1497,9 @@ function removeFullscreenSettings() {
 window.addEventListener('message', (event) => {
   if (isOrphaned) return;
 
-  // 🚀 新增：安全防线，严格校验消息发送者的来源
-  // 预期来源应该是我们自己的 Chrome 扩展
   const expectedOrigin = chrome.runtime.getURL('').replace(/\/$/, '');
   if (event.origin !== expectedOrigin) {
-    return; // 如果来源不是我们的设置面板 iframe，直接无视，静默丢弃
+    return;
   }
   
   if (event.data && event.data.action === "lasdoscas_resize") {

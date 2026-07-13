@@ -36,7 +36,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           
           // 如果是 50x 服务器错误，且还有重试次数，就稍微等一下再试
           if (response.status >= 500 && i < retries) {
-            console.warn(`[lasDoscas 翻译 API 波动] 状态码 ${response.status}，准备进行第 ${i + 1} 次重试...`);
+            console.info(`[lasDoscas 翻译 API 波动] 状态码 ${response.status}，准备进行第 ${i + 1} 次重试...`);
             await new Promise(resolve => setTimeout(resolve, 800)); // 暂停 800 毫秒
             continue;
           }
@@ -56,15 +56,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // 【优化 2：拦截 500 错误并优雅降级】
           // 如果重试结束后依然是 500 系列错误，静默拦截，不再抛出异常 (throw Error)
           if (response.status >= 500) {
-             console.warn(`[lasDoscas] Google 翻译服务端异常 (${response.status})，已静默拦截并降级显示原文。原文: ${safeText}`);
+             console.info(`[lasDoscas] Google 翻译服务端异常 (${response.status})，已静默拦截并降级显示原文。`);
              return null; // 返回 null 传递给下一个 then，触发降级
           }
 
           const errorHtml = await response.text();
-          console.error(`HTTP 错误 [${response.status}]:`, errorHtml.substring(0, 200) + "...");
           if (response.status === 429 || response.status === 403) {
+            console.info(`[lasDoscas] 翻译服务暂时限流 (${response.status})，已降级显示原文。`);
             throw new Error("请求太频繁，被 Google 暂时封禁 IP 了");
           }
+          console.error(`HTTP 错误 [${response.status}]:`, errorHtml.substring(0, 200) + "...");
           throw new Error(`网络请求失败 (状态码: ${response.status})`);
         }
 
@@ -93,7 +94,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
       })
       .catch(error => {
-        console.warn("lasDoscas 翻译网络层错误或被拦截:", error.message);
+        console.info("lasDoscas: 翻译请求未完成，已降级显示原文。", error.message);
         // 静默处理，不让前端字幕框报错崩溃，直接返回空字符串
         sendResponse({ translation: "" }); 
       });
