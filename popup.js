@@ -26,7 +26,7 @@ const formFields = [
 const toggleFields = ['srcNormalBold', 'srcFsBold', 'transNormalBold', 'transFsBold'];
 
 // 面板 UI 自身的显示语言字典：只有中/英/西三种，按需求不要在这里增加更多语言。
-// 注意这跟下面的字幕翻译目标语言（38 种，见 getSmartDefaultLang）是两个完全独立的概念，
+// 注意这跟下面的字幕翻译目标语言（55 种，见 getSmartDefaultLang）是两个完全独立的概念，
 // 千万不要混着改。
 const i18nDict = {
   'zh': {
@@ -36,7 +36,6 @@ const i18nDict = {
     firstSub: '第一字幕（原文）',
     secondSub: '第二字幕（译文）',
     cancelBtn: '关闭',
-    applyBtn: '应用',
     fsBgStyleLabel: '字幕背景（全屏）',
     fsBgStyleNone: '无背景',
     fsBgStyleFit: '贴合字幕',
@@ -53,7 +52,6 @@ const i18nDict = {
     firstSub: 'Primary subtitle (original)',
     secondSub: 'Secondary subtitle (translation)',
     cancelBtn: 'Close',
-    applyBtn: 'Apply',
     fsBgStyleLabel: 'Subtitle background (fullscreen)',
     fsBgStyleNone: 'None',
     fsBgStyleFit: 'Fit to text',
@@ -70,7 +68,6 @@ const i18nDict = {
     firstSub: 'Primer subtítulo (original)',
     secondSub: 'Segundo subtítulo (traducción)',
     cancelBtn: 'Cerrar',
-    applyBtn: 'Aplicar',
     fsBgStyleLabel: 'Fondo de subtítulos (pantalla completa)',
     fsBgStyleNone: 'Ninguno',
     fsBgStyleFit: 'Ajustado al texto',
@@ -82,7 +79,7 @@ const i18nDict = {
   }
 };
 
-// ⚠️ 这个函数决定的是"字幕翻译目标语言"（对应 <select id="lang"> 里的 38 个选项）的
+// ⚠️ 这个函数决定的是"字幕翻译目标语言"（对应 <select id="lang"> 里的 55 个选项）的
 // 默认值，跟面板 UI 语言（下面 defaultSettings.uiLang，只有 zh/en/es）是完全不同的两件事。
 // 之前这里是一份简化版本（只会返回 'zh-CN' 或 'en'），跟 content.js 里那份更完整的版本
 // 判断逻辑不一致，会导致：比如浏览器语言是日语的新用户，content.js 会正确默认给他 'ja'，
@@ -131,7 +128,7 @@ const defaultSettings = {
   fsBgOpacity: '75',  
   popupTheme: 'light',
   // 面板 UI 语言：这里保持原来"只在 zh/en/es 三者之间选"的逻辑不变，
-  // 不要跟上面的 getSmartDefaultLang()（翻译目标语言，38 种）混在一起改。
+  // 不要跟上面的 getSmartDefaultLang()（翻译目标语言，55 种）混在一起改。
   uiLang: (() => {
     const prefix = (navigator.language || 'en').toLowerCase().split('-')[0];
     if (prefix === 'zh' || prefix === 'es') return prefix;
@@ -158,18 +155,18 @@ document.addEventListener('DOMContentLoaded', () => {
     applyThemeUI(tempSettings['popupTheme']);
     currentUiLang = tempSettings['uiLang'];
     applyI18n(currentUiLang);
-  });
 
-  bindHeaderEvents();
-  bindFormInputsEvents();
-  bindToggleButtonsEvents();
-  bindColorPresetsEvents();
-  bindFooterEvents();
+    bindHeaderEvents();
+    bindFormInputsEvents();
+    bindToggleButtonsEvents();
+    bindColorPresetsEvents();
+    bindFooterEvents();
+  });
 });
 
-function enableApplyBtn() {
-  const btn = document.getElementById('btnApply');
-  if (btn) btn.disabled = false;
+function saveSettings(changes) {
+  Object.assign(tempSettings, changes);
+  chrome.storage.local.set(changes);
 }
 
 function applySettingsToUI(settingsObj) {
@@ -243,8 +240,7 @@ function applyI18n(lang) {
 function bindHeaderEvents() {
   document.getElementById('themeToggleBtn').addEventListener('click', () => {
     const nextTheme = tempSettings['popupTheme'] === 'light' ? 'dark' : 'light';
-    tempSettings['popupTheme'] = nextTheme;
-    chrome.storage.local.set({ popupTheme: nextTheme });
+    saveSettings({ popupTheme: nextTheme });
     applyThemeUI(nextTheme);
   });
 
@@ -254,8 +250,7 @@ function bindHeaderEvents() {
     let currentIndex = langSequence.indexOf(currentUiLang);
     currentUiLang = langSequence[(currentIndex + 1) % langSequence.length];
     
-    tempSettings['uiLang'] = currentUiLang;
-    chrome.storage.local.set({ uiLang: currentUiLang }); 
+    saveSettings({ uiLang: currentUiLang });
     applyI18n(currentUiLang);
   });
 }
@@ -264,27 +259,31 @@ function bindFormInputsEvents() {
   formFields.forEach(f => {
     const el = document.getElementById(f);
     if (el) {
-      const evType = (el.type === 'checkbox' || el.tagName === 'SELECT' || el.type === 'range') ? 'change' : 'input';
+      const evType = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
       el.addEventListener(evType, () => {
-        tempSettings[f] = el.type === 'checkbox' ? el.checked : el.value;
-        enableApplyBtn(); 
+        const value = el.type === 'checkbox' ? el.checked : el.value;
+        if (el.type === 'text' && !/^#[0-9a-f]{6}$/i.test(value)) return;
+
+        const changes = { [f]: value };
         
         if (f === 'enabled') updateSubSettingsArea(el.checked);
         if (f === 'fsBgStyle') {
           updateOpacityWrapper(el.value);
           if (el.value === 'none') {
-            tempSettings['srcFsBold'] = false;
-            tempSettings['transFsBold'] = true;
+            changes.srcFsBold = false;
+            changes.transFsBold = true;
             updateToggleBtnUI('srcFsBoldBtn', false);
             updateToggleBtnUI('transFsBoldBtn', true);
           } 
           else if (el.value === 'fit' || el.value === 'fixed') {
-            tempSettings['srcFsBold'] = false;
-            tempSettings['transFsBold'] = false;
+            changes.srcFsBold = false;
+            changes.transFsBold = false;
             updateToggleBtnUI('srcFsBoldBtn', false);
             updateToggleBtnUI('transFsBoldBtn', false);
           }
         }
+
+        saveSettings(changes);
       });
     }
   });
@@ -303,9 +302,9 @@ function bindToggleButtonsEvents() {
     if (btn) {
       btn.addEventListener('click', () => {
         const settingKey = toggleMap[btnId];
-        tempSettings[settingKey] = !tempSettings[settingKey];
-        updateToggleBtnUI(btnId, tempSettings[settingKey]);
-        enableApplyBtn(); 
+        const nextValue = !tempSettings[settingKey];
+        updateToggleBtnUI(btnId, nextValue);
+        saveSettings({ [settingKey]: nextValue });
       });
     }
   });
@@ -320,8 +319,7 @@ function bindColorPresetsEvents() {
       const inputEl = document.getElementById(targetId);
       if (inputEl) {
         inputEl.value = colorHex;
-        tempSettings[targetId] = colorHex; 
-        enableApplyBtn();
+        saveSettings({ [targetId]: colorHex });
       }
     });
   });
@@ -334,12 +332,12 @@ function bindFooterEvents() {
     if (btnReset.classList.contains('undo-state')) {
       applySettingsToUI(preResetSettings);
       tempSettings = { ...preResetSettings }; 
+      chrome.storage.local.set(tempSettings);
       
       clearTimeout(undoTimeout);
       clearInterval(countdownInterval);
       btnReset.classList.remove('undo-state');
       btnReset.textContent = i18nDict[currentUiLang].resetBtn || '重置';
-      enableApplyBtn();
       return;
     }
 
@@ -352,7 +350,7 @@ function bindFooterEvents() {
     
     tempSettings = { ...pureDefaults };
     applySettingsToUI(pureDefaults); 
-    enableApplyBtn(); 
+    chrome.storage.local.set(tempSettings);
 
     btnReset.classList.add('undo-state');
     let timeLeft = 3; 
@@ -379,12 +377,6 @@ function bindFooterEvents() {
     window.close();
   });
 
-  const btnApply = document.getElementById('btnApply');
-  btnApply.addEventListener('click', () => {
-    chrome.storage.local.set(tempSettings, () => {
-      btnApply.disabled = true; 
-    }); 
-  });
 }
 
 if (window.self !== window.top) {

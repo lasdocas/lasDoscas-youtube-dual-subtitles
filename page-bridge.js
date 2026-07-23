@@ -137,6 +137,12 @@
       playerResponse?.videoDetails?.videoId ||
       new URL(window.location.href).searchParams.get('v') ||
       '';
+    const playerMicroformat = playerResponse?.microformat?.playerMicroformatRenderer;
+    const videoTitle =
+      playerResponse?.videoDetails?.title ||
+      playerMicroformat?.title?.simpleText ||
+      '';
+    const publishDate = playerMicroformat?.publishDate || playerMicroformat?.uploadDate || '';
     if (videoId !== lastVideoId) {
       lastVideoId = videoId;
       lastActiveTrack = null;
@@ -173,6 +179,8 @@
 
     return {
       videoId,
+      videoTitle,
+      publishDate,
       trackKey,
       selectedTrack: normalizedTrack,
       trackCount: captionTracks.length,

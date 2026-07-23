@@ -153,6 +153,7 @@ function getAutoTranslateSelectionMessage(targetLang) {
     'en': '[Choose a caption track or an auto-generated caption track in YouTube so lasDoscas can provide bilingual subtitles]',
     'es': '[Selecciona una pista de subtítulos o de subtítulos generados automáticamente en YouTube para usar los subtítulos bilingües de lasDoscas]',
     'fr': '[Choisissez une piste de sous-titres ou de sous-titres générés automatiquement dans YouTube pour utiliser les sous-titres bilingues de lasDoscas]',
+    'fr-CA': '[Choisissez une piste de sous-titres ou de sous-titres générés automatiquement dans YouTube afin que lasDoscas puisse afficher des sous-titres bilingues]',
     'de': '[Wählen Sie in YouTube eine Untertitelspur oder eine automatisch erzeugte Untertitelspur aus, damit lasDoscas zweisprachige Untertitel anzeigen kann]',
     'ja': '[lasDoscas の二言語字幕を利用するには、YouTube で字幕または自動生成字幕を選択してください]',
     'ko': '[lasDoscas 이중 언어 자막을 사용하려면 YouTube에서 자막 또는 자동 생성 자막을 선택하세요]',
@@ -161,11 +162,47 @@ function getAutoTranslateSelectionMessage(targetLang) {
     'ar': '[اختر مسار ترجمة مصاحبة أو ترجمة مصاحبة تم إنشاؤها تلقائيًا في YouTube ليتمكن lasDoscas من عرض ترجمة ثنائية اللغة]',
     'hi': '[lasDoscas के द्विभाषी उपशीर्षक उपयोग करने के लिए YouTube में उपशीर्षक या अपने-आप बने उपशीर्षक चुनें]',
     'id': '[Pilih trek subtitel atau subtitel yang dibuat otomatis di YouTube agar lasDoscas dapat menampilkan subtitel dwibahasa]',
+    'ms': '[Pilih sari kata atau sari kata yang dijana secara automatik dalam YouTube supaya lasDoscas dapat memaparkan sari kata dwibahasa]',
+    'ta': '[lasDoscas இருமொழி வசனங்களை வழங்க, YouTube வசன வரிசையில் வசனங்கள் அல்லது தானாக உருவாக்கப்பட்ட வசனங்களைத் தேர்ந்தெடுக்கவும்]',
+    'th': '[เลือกแทร็กคำบรรยายหรือคำบรรยายที่สร้างอัตโนมัติใน YouTube เพื่อให้ lasDoscas แสดงคำบรรยายสองภาษาได้]',
     'vi': '[Hãy chọn phụ đề hoặc phụ đề được tạo tự động trong YouTube để lasDoscas có thể hiển thị phụ đề song ngữ]',
     'it': '[Seleziona una traccia di sottotitoli o di sottotitoli generati automaticamente in YouTube per usare i sottotitoli bilingui di lasDoscas]',
     'tr': '[lasDoscas iki dilli altyazıları kullanmak için YouTube’da bir altyazı parçası veya otomatik oluşturulan altyazı parçası seçin]',
     'pl': '[Wybierz w YouTube ścieżkę napisów lub automatycznie wygenerowaną ścieżkę napisów, aby lasDoscas mógł wyświetlać napisy dwujęzyczne]',
-    'nl': '[Selecteer in YouTube een ondertitelspoor of een automatisch gegenereerd ondertitelspoor zodat lasDoscas tweetalige ondertitels kan tonen]'
+    'nl': '[Selecteer in YouTube een ondertitelspoor of een automatisch gegenereerd ondertitelspoor zodat lasDoscas tweetalige ondertitels kan tonen]',
+    'sv': '[Välj ett undertextspår eller ett automatiskt genererat undertextspår i YouTube så att lasDoscas kan visa tvåspråkiga undertexter]',
+    'da': '[Vælg et undertekstspor eller et automatisk genereret undertekstspor i YouTube, så lasDoscas kan vise tosprogede undertekster]',
+    'no': '[Velg et tekstspor eller et automatisk generert tekstspor i YouTube, slik at lasDoscas kan vise tospråklige undertekster]',
+    'fi': '[Valitse YouTubessa tekstitysraita tai automaattisesti luotu tekstitysraita, jotta lasDoscas voi näyttää kaksikieliset tekstitykset]',
+    'ro': '[Selectați în YouTube o pistă de subtitrări sau una generată automat, pentru ca lasDoscas să poată afișa subtitrări bilingve]',
+    'hu': '[Válasszon feliratsávot vagy automatikusan létrehozott feliratsávot a YouTube-on, hogy a lasDoscas kétnyelvű feliratokat jeleníthessen meg]',
+    'cs': '[Vyberte na YouTube stopu titulků nebo automaticky generovaných titulků, aby lasDoscas mohl zobrazovat dvojjazyčné titulky]',
+    'hr': '[Odaberite zapis titlova ili automatski generiranih titlova na YouTubeu kako bi lasDoscas mogao prikazivati dvojezične titlove]',
+    'el': '[Επιλέξτε στο YouTube υπότιτλους ή υπότιτλους που δημιουργήθηκαν αυτόματα, ώστε το lasDoscas να μπορεί να εμφανίσει δίγλωσσους υπότιτλους]',
+    'iw': '[בחרו ב-YouTube רצועת כתוביות או כתוביות שנוצרו אוטומטית כדי ש-lasDoscas יוכל להציג כתוביות דו-לשוניות]',
+    'tl': '[Pumili ng subtitle track o awtomatikong nabuong subtitle track sa YouTube para makapagpakita ang lasDoscas ng dalawang-wikang subtitle]',
+    'uk': '[Виберіть у YouTube доріжку субтитрів або автоматично створених субтитрів, щоб lasDoscas міг показувати двомовні субтитри]',
+    'eu': '[Hautatu azpititulu-pista bat edo automatikoki sortutako azpititulu-pista bat YouTuben, lasDoscasek azpititulu elebidunak erakutsi ahal izateko]',
+    'ca': '[Seleccioneu una pista de subtítols o de subtítols generats automàticament a YouTube perquè lasDoscas pugui mostrar subtítols bilingües]',
+    'gl': '[Selecciona en YouTube unha pista de subtítulos ou de subtítulos xerados automaticamente para que lasDoscas poida mostrar subtítulos bilingües]',
+    'is': '[Veldu textabraut eða sjálfvirkt myndaða textabraut á YouTube svo lasDoscas geti birt tvítyngdan texta]',
+    'sw': '[Chagua manukuu au manukuu yaliyotengenezwa kiotomatiki katika YouTube ili lasDoscas iweze kuonyesha manukuu ya lugha mbili]',
+    'et': '[Valige YouTube’is subtiitrite rada või automaatselt loodud subtiitrite rada, et lasDoscas saaks kuvada kakskeelseid subtiitreid]',
+    'lv': '[Izvēlieties YouTube subtitru celiņu vai automātiski ģenerētu subtitru celiņu, lai lasDoscas varētu rādīt divvalodu subtitrus]',
+    'lt': '[Pasirinkite „YouTube“ subtitrų takelį arba automatiškai sugeneruotų subtitrų takelį, kad „lasDoscas“ galėtų rodyti dvikalbius subtitrus]',
+    'sk': '[Vyberte na YouTube stopu titulkov alebo automaticky generovaných titulkov, aby lasDoscas mohol zobrazovať dvojjazyčné titulky]',
+    'sl': '[V YouTubu izberite podnapise ali samodejno ustvarjene podnapise, da bo lasDoscas lahko prikazoval dvojezične podnapise]',
+    'bg': '[Изберете в YouTube писта със субтитри или автоматично генерирани субтитри, за да може lasDoscas да показва двуезични субтитри]',
+    'sr': '[Изаберите на YouTube-у титлове или аутоматски генерисане титлове како би lasDoscas могао да приказује двојезичне титлове]',
+    'ur': '[YouTube میں سب ٹائٹل ٹریک یا خودکار طور پر تیار کردہ سب ٹائٹل ٹریک منتخب کریں تاکہ lasDoscas دو لسانی سب ٹائٹلز دکھا سکے]',
+    'fa': '[در YouTube یک مسیر زیرنویس یا زیرنویس تولیدشده به‌صورت خودکار را انتخاب کنید تا lasDoscas بتواند زیرنویس دوزبانه نمایش دهد]',
+    'mr': '[lasDoscas द्विभाषिक उपशीर्षके दाखवू शकण्यासाठी YouTube मध्ये उपशीर्षक ट्रॅक किंवा आपोआप तयार केलेला उपशीर्षक ट्रॅक निवडा]',
+    'bn': '[lasDoscas যেন দ্বিভাষিক সাবটাইটেল দেখাতে পারে, সে জন্য YouTube-এ একটি সাবটাইটেল ট্র্যাক বা স্বয়ংক্রিয়ভাবে তৈরি সাবটাইটেল ট্র্যাক নির্বাচন করুন]',
+    'gu': '[lasDoscas દ્વિભાષી સબટાઇટલ બતાવી શકે તે માટે YouTube માં સબટાઇટલ ટ્રૅક અથવા આપમેળે જનરેટ થયેલ સબટાઇટલ ટ્રૅક પસંદ કરો]',
+    'te': '[lasDoscas ద్విభాషా ఉపశీర్షికలను చూపడానికి YouTubeలో ఉపశీర్షిక ట్రాక్ లేదా స్వయంచాలకంగా రూపొందించిన ఉపశీర్షిక ట్రాక్‌ను ఎంచుకోండి]',
+    'kn': '[lasDoscas ದ್ವಿಭಾಷಾ ಉಪಶೀರ್ಷಿಕೆಗಳನ್ನು ತೋರಿಸಲು YouTube ನಲ್ಲಿ ಉಪಶೀರ್ಷಿಕೆ ಟ್ರ್ಯಾಕ್ ಅಥವಾ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ರಚಿಸಲಾದ ಉಪಶೀರ್ಷಿಕೆ ಟ್ರ್ಯಾಕ್ ಆಯ್ಕೆಮಾಡಿ]',
+    'ml': '[lasDoscas-ന് ദ്വിഭാഷാ സബ്‌ടൈറ്റിലുകൾ കാണിക്കാൻ YouTube-ൽ ഒരു സബ്‌ടൈറ്റിൽ ട്രാക്കോ സ്വയമേവ സൃഷ്‌ടിച്ച സബ്‌ടൈറ്റിൽ ട്രാക്കോ തിരഞ്ഞെടുക്കുക]',
+    'am': '[lasDoscas ባለሁለት ቋንቋ ንዑስ ርዕሶችን ማሳየት እንዲችል በYouTube ውስጥ የንዑስ ርዕስ ትራክ ወይም በራስ-ሰር የተፈጠረ የንዑስ ርዕስ ትራክ ይምረጡ]'
   };
   return dict[lang] || dict[prefix] || dict.en;
 }
@@ -180,6 +217,7 @@ function dieQuietly() {
   if (ccButtonObserver) ccButtonObserver.disconnect();
   if (containerMonitor) clearInterval(containerMonitor);
   if (playerControlMonitor) clearInterval(playerControlMonitor);
+  clearTimeout(copyFeedbackTimer);
   cancelTrackLoad();
   stopFileRenderer();
   resetLiveAsrBuffer();
@@ -231,6 +269,32 @@ function getSmartDefaultLang() {
   return 'en';
 }
 
+function getDefaultUiLang() {
+  const prefix = (navigator.language || 'en').toLowerCase().split('-')[0];
+  return prefix === 'zh' || prefix === 'es' ? prefix : 'en';
+}
+
+const copyUiText = Object.freeze({
+  zh: {
+    subtitleLabel: '复制当前字幕',
+    fullLabel: '复制完整信息',
+    copied: '已复制',
+    failed: '复制失败'
+  },
+  en: {
+    subtitleLabel: 'Copy current subtitle',
+    fullLabel: 'Copy full details',
+    copied: 'Copied',
+    failed: 'Copy failed'
+  },
+  es: {
+    subtitleLabel: 'Copiar el subtítulo actual',
+    fullLabel: 'Copiar toda la información',
+    copied: 'Copiado',
+    failed: 'No se pudo copiar'
+  }
+});
+
 let lastText = "";
 let lastMatchedSource = "";
 let observer = null;
@@ -265,6 +329,7 @@ const DOM_TRANSLATION_DEBOUNCE_MS = 80;
 const LIVE_ASR_PREFETCH_MS = 120;
 const LIVE_ASR_COMMIT_STABILITY_MS = 260;
 const FILE_RENDER_INTERVAL_MS = 50;
+const COPY_FEEDBACK_DURATION_MS = 500;
 
 let trackMode = TRACK_MODE.UNKNOWN;
 let isAutoGenerated = false;
@@ -279,6 +344,9 @@ let renderedFileCueIndex = -1;
 let bridgeRequestSequence = 0;
 const bridgeRequests = new Map();
 const inflightTranslations = new Map();
+let isShiftPressed = false;
+let copyFeedbackTimer = null;
+let currentVideoMetadata = { videoId: '', title: '', publishDate: '' };
 
 let preloadedTranslations = new Map();
 let preloadedSentencesList = [];
@@ -300,7 +368,8 @@ let currentSettings = {
   transNormalBold: false,
   transFsBold: true,
   fsBgStyle: 'none',
-  fsBgOpacity: '75'
+  fsBgOpacity: '75',
+  uiLang: getDefaultUiLang()
 };
 
 function loadAndApplySettings() {
@@ -405,6 +474,242 @@ function getLayoutMode() {
   if (watchFlexy && watchFlexy.hasAttribute('theater')) return 'theater';
   return 'default';
 }
+
+function getCopyUiText() {
+  return copyUiText[currentSettings.uiLang] || copyUiText.en;
+}
+
+function getCurrentVideoId() {
+  return new URLSearchParams(window.location.search).get('v') || '';
+}
+
+function cachePlayerSnapshotMetadata(snapshot) {
+  const currentVideoId = getCurrentVideoId();
+  if (!snapshot?.videoId || snapshot.videoId !== currentVideoId) return;
+
+  const isSameVideo = currentVideoMetadata.videoId === snapshot.videoId;
+  currentVideoMetadata = {
+    videoId: snapshot.videoId,
+    title: snapshot.videoTitle || (isSameVideo ? currentVideoMetadata.title : ''),
+    publishDate: snapshot.publishDate || (isSameVideo ? currentVideoMetadata.publishDate : '')
+  };
+}
+
+function resetCurrentVideoMetadata() {
+  currentVideoMetadata = { videoId: getCurrentVideoId(), title: '', publishDate: '' };
+}
+
+function getVisibleVideoTitle() {
+  const selectors = [
+    'ytd-watch-metadata h1 yt-formatted-string',
+    'ytd-watch-metadata h1',
+    '#above-the-fold #title h1 yt-formatted-string'
+  ];
+
+  for (const selector of selectors) {
+    for (const titleNode of document.querySelectorAll(selector)) {
+      const rect = titleNode.getBoundingClientRect();
+      if (!rect.width || !rect.height) continue;
+      const title = (titleNode.textContent || '').trim();
+      if (title) return title;
+    }
+  }
+  return '';
+}
+
+function getDateOnly(value) {
+  const date = String(value || '').trim();
+  const isoDate = date.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  return isoDate || date;
+}
+
+function getCurrentVideoMetadata() {
+  const videoId = getCurrentVideoId();
+  const cached = currentVideoMetadata.videoId === videoId ? currentVideoMetadata : null;
+  const visibleTitle = getVisibleVideoTitle();
+  const metaTitle = document.querySelector('meta[name="title"], meta[property="og:title"]')?.content || '';
+  const documentTitle = document.title.replace(/\s*-\s*YouTube\s*$/, '').trim();
+  const metaDate = document.querySelector(
+    'meta[itemprop="datePublished"], meta[itemprop="uploadDate"]'
+  )?.content || '';
+
+  return {
+    videoId,
+    title: visibleTitle || metaTitle || cached?.title || documentTitle,
+    publishDate: getDateOnly(cached?.publishDate || metaDate)
+  };
+}
+
+function getCurrentSourceSubtitle(wrapper = document.querySelector('.custom-subtitle-wrapper')) {
+  const text = wrapper?.querySelector('.custom-source-text')?.textContent || '';
+  return text.replace(/\u00a0/g, ' ').trim();
+}
+
+function formatPlaybackTimestamp(seconds) {
+  const totalSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function buildTimestampedSubtitle(sourceSubtitle) {
+  const video = document.querySelector('video');
+  return `[${formatPlaybackTimestamp(video?.currentTime)}]  ${sourceSubtitle}`;
+}
+
+function buildFullCopyText(sourceSubtitle) {
+  const metadata = getCurrentVideoMetadata();
+  const heading = metadata.title
+    ? (metadata.publishDate ? `${metadata.title} (${metadata.publishDate})` : metadata.title)
+    : '';
+  const videoUrl = metadata.videoId
+    ? `https://www.youtube.com/watch?v=${encodeURIComponent(metadata.videoId)}`
+    : window.location.href;
+  const timestampedSubtitle = buildTimestampedSubtitle(sourceSubtitle);
+
+  const lines = [];
+  if (heading) lines.push(heading);
+  lines.push(videoUrl, '', timestampedSubtitle);
+  return lines.join('\n');
+}
+
+async function writeTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (error) {
+      // Fall through to the selection-based copy path below.
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.setProperty('position', 'fixed', 'important');
+  textarea.style.setProperty('left', '-9999px', 'important');
+  textarea.style.setProperty('top', '0', 'important');
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  if (!copied) throw new Error('Clipboard write was rejected');
+}
+
+function updateCopyButtonLanguage(wrapper = document.querySelector('.custom-subtitle-wrapper')) {
+  const button = wrapper?.querySelector('.lasdoscas-copy-button');
+  if (!button) return;
+
+  const text = getCopyUiText();
+  const label = button.getAttribute('data-copy-mode') === 'full' ? text.fullLabel : text.subtitleLabel;
+  button.setAttribute('aria-label', button.classList.contains('is-copied') ? text.copied : label);
+}
+
+function updateCopyButtonIcon(wrapper = document.querySelector('.custom-subtitle-wrapper')) {
+  if (isOrphaned) return;
+  const button = wrapper?.querySelector('.lasdoscas-copy-button');
+  const icon = button?.querySelector('.lasdoscas-copy-main-icon');
+  if (!button || !icon || button.classList.contains('is-copied')) return;
+
+  const useFullCopy = isShiftPressed;
+  icon.src = chrome.runtime.getURL(useFullCopy ? 'copyfull48.svg' : 'copy48.svg');
+  button.setAttribute('data-copy-mode', useFullCopy ? 'full' : 'subtitle');
+  updateCopyButtonLanguage(wrapper);
+}
+
+function updateCopyAvailability(wrapper = document.querySelector('.custom-subtitle-wrapper')) {
+  if (!wrapper) return;
+  const isAvailable = !loadingMessageVisible && Boolean(getCurrentSourceSubtitle(wrapper));
+  const button = wrapper.querySelector('.lasdoscas-copy-button');
+  wrapper.setAttribute('data-copy-available', isAvailable ? 'true' : 'false');
+  if (button) button.tabIndex = isAvailable ? 0 : -1;
+}
+
+function showCopySuccess(button) {
+  clearTimeout(copyFeedbackTimer);
+  button.classList.add('is-copied');
+  button.setAttribute('aria-label', getCopyUiText().copied);
+  copyFeedbackTimer = setTimeout(() => {
+    button.classList.remove('is-copied');
+    updateCopyButtonLanguage(button.closest('.custom-subtitle-wrapper'));
+    updateCopyButtonIcon(button.closest('.custom-subtitle-wrapper'));
+  }, COPY_FEEDBACK_DURATION_MS);
+}
+
+function showCopyFailure(button) {
+  button.setAttribute('aria-label', getCopyUiText().failed);
+  button.classList.remove('is-copy-error');
+  void button.offsetWidth;
+  button.classList.add('is-copy-error');
+  setTimeout(() => {
+    button.classList.remove('is-copy-error');
+    updateCopyButtonLanguage(button.closest('.custom-subtitle-wrapper'));
+  }, COPY_FEEDBACK_DURATION_MS);
+}
+
+async function copyCurrentSubtitle(event) {
+  if (!checkContext() || isOrphaned) return;
+  const button = event.currentTarget;
+  const wrapper = button.closest('.custom-subtitle-wrapper');
+  const sourceSubtitle = getCurrentSourceSubtitle(wrapper);
+  if (!sourceSubtitle) return;
+
+  const copyFullDetails = Boolean(event.shiftKey || isShiftPressed);
+  const copyText = copyFullDetails
+    ? buildFullCopyText(sourceSubtitle)
+    : buildTimestampedSubtitle(sourceSubtitle);
+  try {
+    await writeTextToClipboard(copyText);
+    showCopySuccess(button);
+  } catch (error) {
+    console.warn('lasDoscas: 无法写入剪贴板。', error);
+    showCopyFailure(button);
+  }
+}
+
+function bindCopyButton(wrapper) {
+  const button = wrapper.querySelector('.lasdoscas-copy-button');
+  if (!button) return;
+
+  button.addEventListener('pointerdown', (event) => event.stopPropagation());
+  button.addEventListener('dblclick', (event) => event.stopPropagation());
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    copyCurrentSubtitle(event);
+  });
+  wrapper.addEventListener('pointerenter', (event) => {
+    isShiftPressed = Boolean(event.shiftKey);
+    updateCopyButtonIcon(wrapper);
+  });
+  updateCopyButtonLanguage(wrapper);
+  updateCopyButtonIcon(wrapper);
+  updateCopyAvailability(wrapper);
+}
+
+document.addEventListener('keydown', (event) => {
+  if (isOrphaned || event.key !== 'Shift' || isShiftPressed) return;
+  isShiftPressed = true;
+  updateCopyButtonIcon();
+});
+
+document.addEventListener('keyup', (event) => {
+  if (isOrphaned || event.key !== 'Shift') return;
+  isShiftPressed = false;
+  updateCopyButtonIcon();
+});
+
+window.addEventListener('blur', () => {
+  if (isOrphaned || !isShiftPressed) return;
+  isShiftPressed = false;
+  updateCopyButtonIcon();
+});
 
 function applyStylesToDOM() {
   if (isOrphaned) return;
@@ -538,8 +843,15 @@ function ensureSubtitleContainer() {
     wrapper.innerHTML = `
       <div class="custom-source-text">&nbsp;</div>
       <div class="custom-translated-text">&nbsp;</div>
+      <button type="button" class="lasdoscas-copy-button" data-copy-mode="subtitle" tabindex="-1">
+        <span class="lasdoscas-copy-icon" aria-hidden="true">
+          <img class="lasdoscas-copy-main-icon" alt="" src="${chrome.runtime.getURL('copy48.svg')}">
+          <img class="lasdoscas-copy-check-icon" alt="" src="${chrome.runtime.getURL('check48.svg')}">
+        </span>
+      </button>
     `;
     wrapper.style.setProperty('color-scheme', 'only light', 'important');
+    bindCopyButton(wrapper);
   }
 
   if (layoutMode === 'fullscreen') {
@@ -563,6 +875,8 @@ function ensureSubtitleContainer() {
   }
 
   wrapper.setAttribute('data-layout-mode', layoutMode);
+  updateCopyButtonLanguage(wrapper);
+  updateCopyAvailability(wrapper);
   return wrapper;
 }
 
@@ -624,9 +938,9 @@ function updateWrapperDimensions() {
     if (targetWidth > 200) {
       wrapper.style.setProperty('width', `${targetWidth}px`, 'important');
       wrapper.style.setProperty('max-width', `${targetWidth}px`, 'important');
-      wrapper.style.setProperty('margin', '0 auto', 'important');
-      wrapper.style.setProperty('border-radius', '0 0 8px 8px', 'important'); 
     }
+    wrapper.style.setProperty('margin', '8px auto 12px', 'important');
+    wrapper.style.setProperty('border-radius', '8px', 'important');
   } else if (layoutMode === 'fullscreen') {
     if (currentSettings.fsBgStyle === 'fit' || currentSettings.fsBgStyle === 'none') {
       wrapper.style.setProperty('width', 'fit-content', 'important');
@@ -635,12 +949,12 @@ function updateWrapperDimensions() {
       wrapper.style.setProperty('width', `${targetWidth * 0.8}px`, 'important');
       wrapper.style.setProperty('max-width', '100%', 'important');
     }
+    wrapper.style.setProperty('margin', '0 auto', 'important');
     wrapper.style.setProperty('border-radius', '8px', 'important');
   } else {
     wrapper.style.setProperty('width', '100%', 'important');
     wrapper.style.setProperty('max-width', '100%', 'important');
-    wrapper.style.removeProperty('margin-left');
-    wrapper.style.removeProperty('margin-right');
+    wrapper.style.removeProperty('margin');
     wrapper.style.setProperty('border-radius', '8px', 'important'); 
   }
 }
@@ -780,6 +1094,7 @@ function updateSubtitleContent(source, translated, isHtmlFlag = false) {
     }
   }
 
+  updateCopyAvailability(wrapper);
   updateWrapperVisibility(); 
 }
 
@@ -799,6 +1114,7 @@ function clearSubtitleContent() {
     else transNode.innerHTML = "&nbsp;";
   }
 
+  updateCopyAvailability(wrapper);
   updateWrapperVisibility();
 }
 
@@ -1081,11 +1397,13 @@ function handlePlayerBridgeMessage(event) {
     if (!pendingRequest) return;
     clearTimeout(pendingRequest.timeoutId);
     bridgeRequests.delete(message.requestId);
+    cachePlayerSnapshotMetadata(message.snapshot);
     pendingRequest.resolve(message.snapshot || null);
     return;
   }
 
   if (message.type === 'TRACK_CHANGED' && currentSettings.enabled && !isOrphaned) {
+    cachePlayerSnapshotMetadata(message.snapshot);
     const nextTrackKey = message.snapshot?.trackKey || '';
     if (currentTrackKey && nextTrackKey && nextTrackKey !== currentTrackKey) {
       beginTrackLoad('YouTube caption track changed');
@@ -1723,6 +2041,7 @@ setTimeout(() => {
 window.addEventListener('yt-navigate-finish', () => {
   if (!checkContext() || isOrphaned) return;
   currentCaptionContainer = null;
+  resetCurrentVideoMetadata();
 
   const oldWrapper = document.querySelector('.custom-subtitle-wrapper');
   if (oldWrapper) oldWrapper.remove();

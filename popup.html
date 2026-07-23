@@ -85,10 +85,6 @@
     #btnCancel { background: #e0e0e0; color: #333; }
     #btnCancel:hover { background: #d6d6d6; }
     
-    #btnApply { background: #63e6be; color: #002B36; }
-    #btnApply:hover:not(:disabled) { background: #4fcda9; }
-    #btnApply:disabled { background: #e0e0e0; color: #999; cursor: not-allowed; }
-
     #subSettingsArea { transition: opacity 0.3s ease; }
     #subSettingsArea.disabled { opacity: 0.4; pointer-events: none; }
     #opacityWrapper { transition: opacity 0.3s ease; }
@@ -112,10 +108,6 @@
     body.dark-theme #btnReset, body.dark-theme #btnCancel { background: #333333; color: #eeeeee; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
     body.dark-theme #btnReset:hover, body.dark-theme #btnCancel:hover { background: #444444; }
     body.dark-theme #btnReset.undo-state { background: #555555; color: #ffffff; font-weight: bold; }
-    body.dark-theme #btnApply { background: #63e6be; color: #002B36; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1); }
-    body.dark-theme #btnApply:hover:not(:disabled) { background: #4fcda9; }
-    body.dark-theme #btnApply:disabled { background: #2a2a2a; color: #666666; cursor: not-allowed; box-shadow: none; }
-
     .setting-item.row-layout { flex-direction: row; align-items: flex-end; gap: 10px; margin-bottom: 5px; }
     .col-left { display: flex; flex-direction: column; flex: 1; }
     .col-left > label { font-size: 12px; color: #666; margin-bottom: 4px; display: block; }
@@ -350,10 +342,7 @@
 
   <div class="action-footer">
     <button type="button" id="btnReset" data-i18n="resetBtn">重置</button>
-    <div style="display: flex; gap: 8px;">
-      <button type="button" id="btnCancel" data-i18n="cancelBtn">关闭</button>
-      <button type="button" id="btnApply" data-i18n="applyBtn" disabled>应用</button>
-    </div>
+    <button type="button" id="btnCancel" data-i18n="cancelBtn">关闭</button>
   </div>
 
   <script src="popup.js"></script>

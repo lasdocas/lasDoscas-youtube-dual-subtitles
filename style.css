@@ -43,13 +43,13 @@ body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
   max-width: 100% !important;
   margin-top: 8px !important; 
   margin-bottom: 12px !important;
-  padding: 8px 16px !important; 
+  padding: 8px 52px !important;
   border-radius: 8px !important; 
 }
 
 .custom-subtitle-wrapper[data-layout-mode="theater"] {
-  margin: 0 auto !important; 
-  padding: 10px 24px !important; 
+  margin: 8px auto 12px !important;
+  padding: 10px 60px !important;
 }
 
 .custom-subtitle-wrapper[data-layout-mode="fullscreen"] {
@@ -61,7 +61,7 @@ body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
   z-index: 9999 !important;      
   background: rgba(31, 31, 31, 0.85) !important; 
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
-  padding: 10px 30px !important; 
+  padding: 10px 66px !important;
 }
 
 .custom-source-text, 
@@ -89,6 +89,110 @@ body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
 
 .custom-translated-text {
   font-size: calc(22px * var(--player-scale, 1) * var(--user-scale, 1)) !important;
+}
+
+.lasdoscas-copy-button {
+  position: absolute !important;
+  top: 50% !important;
+  right: 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  box-shadow: none !important;
+  color: #fff !important;
+  font: 500 13px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  letter-spacing: 0 !important;
+  cursor: pointer !important;
+  overflow: visible !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translate(4px, -50%) !important;
+  transition: opacity 140ms ease, transform 140ms ease, background 120ms ease !important;
+  z-index: 2 !important;
+}
+
+.custom-subtitle-wrapper[data-copy-available="true"]:hover .lasdoscas-copy-button,
+.custom-subtitle-wrapper[data-copy-available="true"] .lasdoscas-copy-button:focus-visible {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translate(0, -50%) !important;
+}
+
+.lasdoscas-copy-button:hover,
+.lasdoscas-copy-button:focus-visible {
+  background: rgba(255, 255, 255, 0.14) !important;
+  outline: none !important;
+}
+
+.lasdoscas-copy-button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(99, 230, 190, 0.85) !important;
+}
+
+.lasdoscas-copy-icon {
+  position: relative !important;
+  display: block !important;
+  width: 24px !important;
+  height: 24px !important;
+  pointer-events: none !important;
+}
+
+.lasdoscas-copy-icon img {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: 24px !important;
+  height: 24px !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  transition: opacity 140ms ease, transform 160ms ease !important;
+}
+
+.lasdoscas-copy-main-icon {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+}
+
+.lasdoscas-copy-check-icon {
+  opacity: 0 !important;
+  transform: scale(0.72) !important;
+}
+
+.lasdoscas-copy-button.is-copied .lasdoscas-copy-main-icon {
+  opacity: 0 !important;
+  transform: scale(0.76) !important;
+}
+
+.lasdoscas-copy-button.is-copied .lasdoscas-copy-check-icon {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+}
+
+.lasdoscas-copy-button.is-copy-error .lasdoscas-copy-icon {
+  animation: lasdoscas-copy-error 180ms ease-in-out 2 !important;
+}
+
+@keyframes lasdoscas-copy-error {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lasdoscas-copy-button,
+  .lasdoscas-copy-icon img {
+    transition-duration: 0ms !important;
+  }
+
+  .lasdoscas-copy-button.is-copy-error .lasdoscas-copy-icon {
+    animation: none !important;
+  }
 }
 
 .lasdoscas-status-message {

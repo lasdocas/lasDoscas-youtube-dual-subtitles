@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "3.7",
+  "version": "3.7.1",
   "description": "__MSG_extDesc__",
   "default_locale": "en",
   "author": "lasdocas",
@@ -12,7 +12,16 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["popup.html", "popup.js", "style.css", "icon16.png", "icon48.png"],
+      "resources": [
+        "popup.html",
+        "popup.js",
+        "style.css",
+        "icon16.png",
+        "icon48.png",
+        "copy48.svg",
+        "copyfull48.svg",
+        "check48.svg"
+      ],
       "matches": ["*://*.youtube.com/*"]
     }
   ],
