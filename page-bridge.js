@@ -4,6 +4,9 @@
   if (window.__lasDoscasPlayerBridgeInstalled) return;
   window.__lasDoscasPlayerBridgeInstalled = true;
 
+  let lastVideoId = '';
+  let lastActiveTrack = null;
+
   function safeVssId(track) {
     return track?.vssId || track?.vss_id || '';
   }
@@ -22,6 +25,19 @@
   function getLanguageCode(value) {
     if (typeof value === 'string') return value;
     return value?.languageCode || value?.language_code || '';
+  }
+
+  function hasTrackIdentity(track) {
+    return Boolean(
+      track && (
+        safeVssId(track) ||
+        track.languageCode ||
+        track.baseUrl ||
+        getLanguageCode(track.translationLanguage) ||
+        getLanguageCode(track.translation_language) ||
+        track.tlang
+      )
+    );
   }
 
   function getAutoTranslationState(activeTrack, selectedTrack) {
@@ -117,6 +133,15 @@
     const captionTracks =
       playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
 
+    const videoId =
+      playerResponse?.videoDetails?.videoId ||
+      new URL(window.location.href).searchParams.get('v') ||
+      '';
+    if (videoId !== lastVideoId) {
+      lastVideoId = videoId;
+      lastActiveTrack = null;
+    }
+
     let activeTrack = null;
     try {
       if (moviePlayer && typeof moviePlayer.getOption === 'function') {
@@ -126,13 +151,16 @@
       activeTrack = null;
     }
 
-    const selectedTrack = selectTrack(captionTracks, activeTrack);
-    const videoId =
-      playerResponse?.videoDetails?.videoId ||
-      new URL(window.location.href).searchParams.get('v') ||
-      '';
+    // YouTube clears the active caption track when its native CC button is
+    // switched off. Preserve the last track identity so that action does not
+    // stop, restart, or change lasDoscas subtitles.
+    if (hasTrackIdentity(activeTrack)) lastActiveTrack = activeTrack;
+    const effectiveActiveTrack = hasTrackIdentity(activeTrack) ? activeTrack : lastActiveTrack;
+    const selectedTrack =
+      selectTrack(captionTracks, effectiveActiveTrack) ||
+      (hasTrackIdentity(lastActiveTrack) ? lastActiveTrack : null);
     const normalizedTrack = normalizeTrack(selectedTrack);
-    const autoTranslation = getAutoTranslationState(activeTrack, selectedTrack);
+    const autoTranslation = getAutoTranslationState(effectiveActiveTrack, selectedTrack);
     const trackKey = normalizedTrack
       ? [
           videoId,

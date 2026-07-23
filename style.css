@@ -91,6 +91,127 @@ body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
   font-size: calc(22px * var(--player-scale, 1) * var(--user-scale, 1)) !important;
 }
 
+.lasdoscas-status-message {
+  color: inherit !important;
+  font-size: 0.65em !important;
+  font-weight: 400 !important;
+  opacity: 0.55 !important;
+}
+
+.lasdoscas-player-control {
+  --lasdoscas-control-bg-height: 32px;
+  --lasdoscas-player-icon-size: 24px;
+  position: relative !important;
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+  line-height: 0 !important;
+  gap: 1px !important;
+  height: 100% !important;
+  padding: 0 6px 0 3px !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  background: transparent !important;
+  color: #fff !important;
+  white-space: nowrap !important;
+  float: left !important;
+}
+
+.lasdoscas-player-control::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: var(--lasdoscas-control-bg-height) !important;
+  border-radius: calc(var(--lasdoscas-control-bg-height) / 2) !important;
+  background: transparent !important;
+  transform: translateY(-50%) !important;
+  transition: background 120ms ease !important;
+  pointer-events: none !important;
+}
+
+.lasdoscas-player-control:hover::before,
+.lasdoscas-player-control:focus-within::before {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.lasdoscas-player-icon {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 36px !important;
+  flex: 0 0 36px !important;
+  height: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  vertical-align: middle !important;
+}
+
+.lasdoscas-player-icon img {
+  display: block !important;
+  width: var(--lasdoscas-player-icon-size) !important;
+  height: var(--lasdoscas-player-icon-size) !important;
+  max-width: calc(var(--lasdoscas-control-bg-height) - 8px) !important;
+  max-height: calc(var(--lasdoscas-control-bg-height) - 8px) !important;
+  object-fit: contain !important;
+}
+
+.lasdoscas-player-switch {
+  position: relative !important;
+  display: inline-block !important;
+  align-self: center !important;
+  width: 26px !important;
+  height: 14px !important;
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+  line-height: 0 !important;
+  cursor: pointer !important;
+}
+
+.lasdoscas-player-switch input {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+}
+
+.lasdoscas-player-switch span {
+  position: absolute !important;
+  inset: 0 !important;
+  border-radius: 7px !important;
+  background: #423F39 !important;
+  transition: background 120ms ease !important;
+}
+
+.lasdoscas-player-switch span::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 2px !important;
+  left: 2px !important;
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  transition: transform 120ms ease, background 120ms ease !important;
+}
+
+.lasdoscas-player-switch input:checked + span {
+  background: #fff !important;
+}
+
+.lasdoscas-player-switch input:checked + span::before {
+  background: #000 !important;
+  transform: translateX(12px) !important;
+}
+
 .custom-subtitle-wrapper[data-layout-mode="fullscreen"][data-fs-bg-style="none"] {
   background: transparent !important;
   box-shadow: none !important;

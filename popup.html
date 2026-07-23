@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; width: 320px; padding: 10px 14px; margin: 0; background: #f9f9f9; color: #222; transition: background 0.2s, color 0.2s; }
+    html { background: transparent; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; width: 320px; padding: 10px 14px; margin: 0; background: rgba(249,249,249,0.90); color: #222; transition: background 0.2s, color 0.2s; }
     
     body::-webkit-scrollbar {
       display: none;
@@ -37,7 +38,7 @@
     input[type="range"] { 
       -webkit-appearance: none; appearance: none;
       width: 100%; background: transparent; margin: 2px 0; 
-      --track-bg: #e0e0e0; --tick-color: #a0a0a0;
+      --track-bg: #b8c4c7; --tick-color: #60777f;
     }
     input[type="range"]:focus { outline: none; }
     input[type="range"]::-webkit-slider-runnable-track { 
@@ -45,11 +46,12 @@
       background: linear-gradient(to right, 
         var(--track-bg) calc(var(--tick) - 1px), var(--tick-color) calc(var(--tick) - 1px), 
         var(--tick-color) calc(var(--tick) + 1px), var(--track-bg) calc(var(--tick) + 1px)
-      ); 
+      );
+      box-shadow: inset 0 0 0 1px rgba(0,43,54,0.14);
     }
     input[type="range"]::-webkit-slider-thumb { 
       -webkit-appearance: none; appearance: none;
-      height: 14px; width: 14px; border-radius: 50%; background: #2196F3; cursor: pointer; margin-top: -5px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); 
+      height: 14px; width: 14px; border-radius: 50%; background: #63e6be; cursor: pointer; margin-top: -5px; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     
     .inline-group { display: flex; flex-direction: row; gap: 6px; align-items: center; }
@@ -60,13 +62,13 @@
     
     .bold-toggle-btn { width: 26px; height: 24px; border: none; background: #ededed; color: #333; font-family: 'Segoe UI', sans-serif; font-weight: bold; font-size: 12px; border-radius: 4px; cursor: pointer; transition: all 0.15s ease; box-sizing: border-box; flex: none; display: flex; justify-content: center; align-items: center; }
     .bold-toggle-btn:hover { background: #e0e0e0; }
-    .bold-toggle-btn.active { background: #2196F3; color: #fff; box-shadow: inset 0 1px 3px rgba(0,0,0,0.15); }
+    .bold-toggle-btn.active { background: #63e6be; color: #002B36; box-shadow: inset 0 1px 3px rgba(0,0,0,0.15); }
 
     .switch { position: relative; display: inline-block; width: 34px; height: 18px; margin: 0; flex-shrink: 0; }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .2s; border-radius: 18px; }
     .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
-    input:checked + .slider { background-color: #2196F3; }
+    input:checked + .slider { background-color: #63e6be; }
     input:checked + .slider:before { transform: translateX(16px); }
 
     .action-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
@@ -83,8 +85,8 @@
     #btnCancel { background: #e0e0e0; color: #333; }
     #btnCancel:hover { background: #d6d6d6; }
     
-    #btnApply { background: #2196F3; color: white; }
-    #btnApply:hover:not(:disabled) { background: #1976D2; }
+    #btnApply { background: #63e6be; color: #002B36; }
+    #btnApply:hover:not(:disabled) { background: #4fcda9; }
     #btnApply:disabled { background: #e0e0e0; color: #999; cursor: not-allowed; }
 
     #subSettingsArea { transition: opacity 0.3s ease; }
@@ -92,7 +94,7 @@
     #opacityWrapper { transition: opacity 0.3s ease; }
     #opacityWrapper.disabled { opacity: 0.3; pointer-events: none; }
 
-    body.dark-theme { background: #1a1a1a; color: #f0f0f0; }
+    body.dark-theme { background: rgba(26,26,26,0.90); color: #f0f0f0; }
     body.dark-theme .top-btn { color: #bbb; background: #262626; }
     body.dark-theme .top-btn:hover { background: #363636; }
     body.dark-theme .divider { background: #2a2a2a; }
@@ -101,17 +103,17 @@
     body.dark-theme select, body.dark-theme input[type="text"] { background: #262626; color: #ffffff; }
     body.dark-theme .bold-toggle-btn { background: #262626; color: #ffffff; }
     body.dark-theme .bold-toggle-btn:hover { background: #363636; }
-    body.dark-theme .bold-toggle-btn.active { background: #2196F3; color: #ffffff; box-shadow: inset 0 1px 3px rgba(0,0,0,0.4); }
+    body.dark-theme .bold-toggle-btn.active { background: #63e6be; color: #002B36; box-shadow: inset 0 1px 3px rgba(0,0,0,0.4); }
     body.dark-theme .slider { background-color: #444444; }
-    body.dark-theme input:checked + .slider { background-color: #2196F3; }
+    body.dark-theme input:checked + .slider { background-color: #63e6be; }
     body.dark-theme input[type="range"] { --track-bg: #555555; --tick-color: #888888; }
     body.dark-theme .preset-color { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2); }
     
     body.dark-theme #btnReset, body.dark-theme #btnCancel { background: #333333; color: #eeeeee; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
     body.dark-theme #btnReset:hover, body.dark-theme #btnCancel:hover { background: #444444; }
     body.dark-theme #btnReset.undo-state { background: #555555; color: #ffffff; font-weight: bold; }
-    body.dark-theme #btnApply { background: #2196F3; color: #ffffff; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1); }
-    body.dark-theme #btnApply:hover:not(:disabled) { background: #42A5F5; }
+    body.dark-theme #btnApply { background: #63e6be; color: #002B36; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1); }
+    body.dark-theme #btnApply:hover:not(:disabled) { background: #4fcda9; }
     body.dark-theme #btnApply:disabled { background: #2a2a2a; color: #666666; cursor: not-allowed; box-shadow: none; }
 
     .setting-item.row-layout { flex-direction: row; align-items: flex-end; gap: 10px; margin-bottom: 5px; }
@@ -215,14 +217,14 @@
     </div>
 
     <div class="setting-item inline-group">
-      <input type="text" id="srcColor" placeholder="#d8dee9" maxlength="7" style="width: 65px; flex: none;">
+      <input type="text" id="srcColor" placeholder="#63e6be" maxlength="7" style="width: 65px; flex: none;">
       <div class="color-presets">
         <button type="button" class="preset-color" style="background: #ffffff;" data-target="srcColor" data-color="#ffffff"></button>
         <button type="button" class="preset-color" style="background: #d8dee9;" data-target="srcColor" data-color="#d8dee9"></button>
         <button type="button" class="preset-color" style="background: #f76296;" data-target="srcColor" data-color="#f76296"></button>
         <button type="button" class="preset-color" style="background: #ec6628;" data-target="srcColor" data-color="#ec6628"></button>
         <button type="button" class="preset-color" style="background: #ffb412;" data-target="srcColor" data-color="#ffb412"></button>
-        <button type="button" class="preset-color" style="background: #4eecbd;" data-target="srcColor" data-color="#63e6be"></button>
+        <button type="button" class="preset-color" style="background: #63e6be;" data-target="srcColor" data-color="#63e6be"></button>
         <button type="button" class="preset-color" style="background: #65d4f3;" data-target="srcColor" data-color="#7fdaf4"></button>
         <button type="button" class="preset-color" style="background: #7a8fd8;" data-target="srcColor" data-color="#6b7dbd"></button>
       </div>
@@ -316,14 +318,14 @@
     </div>
 
     <div class="setting-item inline-group">
-      <input type="text" id="transColor" placeholder="#7fdaf4" maxlength="7" style="width: 65px; flex: none;">
+      <input type="text" id="transColor" placeholder="#ffffff" maxlength="7" style="width: 65px; flex: none;">
       <div class="color-presets">
         <button type="button" class="preset-color" style="background: #ffffff;" data-target="transColor" data-color="#ffffff"></button>
         <button type="button" class="preset-color" style="background: #d8dee9;" data-target="transColor" data-color="#d8dee9"></button>
         <button type="button" class="preset-color" style="background: #f76296;" data-target="transColor" data-color="#f76296"></button>
         <button type="button" class="preset-color" style="background: #ec6628;" data-target="transColor" data-color="#ec6628"></button>
         <button type="button" class="preset-color" style="background: #ffb412;" data-target="transColor" data-color="#ffb412"></button>
-        <button type="button" class="preset-color" style="background: #4eecbd;" data-target="transColor" data-color="#63e6be"></button>
+        <button type="button" class="preset-color" style="background: #63e6be;" data-target="transColor" data-color="#63e6be"></button>
         <button type="button" class="preset-color" style="background: #65d4f3;" data-target="transColor" data-color="#7fdaf4"></button>
         <button type="button" class="preset-color" style="background: #7a8fd8;" data-target="transColor" data-color="#6b7dbd"></button>
       </div>

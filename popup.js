@@ -112,19 +112,19 @@ function getSmartDefaultLang() {
 }
 
 const defaultSettings = {
-  enabled: true,
+  enabled: false,
   showSrc: true,
   showTrans: true,
   lang: getSmartDefaultLang(), 
   font: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   srcSize: '0.75',
   fsSrcSize: '1.15', 
-  srcColor: '#d8dee9', 
+  srcColor: '#63e6be',
   srcNormalBold: false, 
   srcFsBold: false,      
   transSize: '0.75',
   fsTransSize: '1.15', 
-  transColor: '#7fdaf4',
+  transColor: '#ffffff',
   transNormalBold: false, 
   transFsBold: true,      
   fsBgStyle: 'none',
