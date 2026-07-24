@@ -4,6 +4,7 @@
 .DS_Store
 Thumbs.db
 desktop.ini
+content_older.js
 
 #======================================================================
 # IDEs and Editors configuration directories
@@ -13,6 +14,7 @@ desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
+temp/
 
 #======================================================================
 # Build artifacts / Extension packages
