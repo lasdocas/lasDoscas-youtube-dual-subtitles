@@ -138,12 +138,17 @@ const defaultSettings = {
 
 let currentUiLang = defaultSettings.uiLang;
 let tempSettings = {}; 
+let isCCAvailable = false;
+let settingsTabId = null;
 
 let preResetSettings = null; 
 let undoTimeout = null;      
 let countdownInterval = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+  updateCCAvailabilityUI(false);
+  requestCCAvailability();
+
   const fieldsToGet = [...formFields, ...toggleFields, 'popupTheme', 'uiLang'];
 
   chrome.storage.local.get(fieldsToGet, (stored) => {
@@ -162,6 +167,50 @@ document.addEventListener('DOMContentLoaded', () => {
     bindColorPresetsEvents();
     bindFooterEvents();
   });
+});
+
+function updateCCAvailabilityUI(ccAvailable) {
+  isCCAvailable = Boolean(ccAvailable);
+  const enabledSwitch = document.getElementById('enabled');
+  if (!enabledSwitch) return;
+
+  enabledSwitch.disabled = !isCCAvailable;
+  const switchLabel = enabledSwitch.closest('.switch');
+  if (switchLabel) {
+    switchLabel.classList.toggle('disabled', !isCCAvailable);
+    switchLabel.setAttribute('aria-disabled', String(!isCCAvailable));
+  }
+
+  updateSubSettingsArea(Boolean(tempSettings.enabled) && isCCAvailable);
+}
+
+function requestCCAvailability() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const activeTab = tabs[0];
+    if (!activeTab?.id) {
+      settingsTabId = null;
+      updateCCAvailabilityUI(false);
+      return;
+    }
+
+    settingsTabId = activeTab.id;
+    chrome.tabs.sendMessage(activeTab.id, { action: 'get_cc_availability' }, (response) => {
+      if (chrome.runtime.lastError) {
+        updateCCAvailabilityUI(false);
+        return;
+      }
+      updateCCAvailabilityUI(response?.ccAvailable);
+    });
+  });
+}
+
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (
+    message?.action === 'cc_availability_changed' &&
+    sender.tab?.id === settingsTabId
+  ) {
+    updateCCAvailabilityUI(message.ccAvailable);
+  }
 });
 
 function saveSettings(changes) {
@@ -183,7 +232,7 @@ function applySettingsToUI(settingsObj) {
   updateToggleBtnUI('transNormalBoldBtn', settingsObj.transNormalBold);
   updateToggleBtnUI('transFsBoldBtn', settingsObj.transFsBold);
 
-  updateSubSettingsArea(settingsObj.enabled);
+  updateSubSettingsArea(settingsObj.enabled && isCCAvailable);
   updateOpacityWrapper(settingsObj.fsBgStyle);
 }
 
@@ -266,7 +315,7 @@ function bindFormInputsEvents() {
 
         const changes = { [f]: value };
         
-        if (f === 'enabled') updateSubSettingsArea(el.checked);
+        if (f === 'enabled') updateSubSettingsArea(el.checked && isCCAvailable);
         if (f === 'fsBgStyle') {
           updateOpacityWrapper(el.value);
           if (el.value === 'none') {

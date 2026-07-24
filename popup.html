@@ -70,6 +70,8 @@
     .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
     input:checked + .slider { background-color: #63e6be; }
     input:checked + .slider:before { transform: translateX(16px); }
+    .switch.disabled { cursor: not-allowed; }
+    .switch input:disabled + .slider { cursor: not-allowed; opacity: 0.45; }
 
     .action-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
     .action-footer button { 

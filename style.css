@@ -316,6 +316,15 @@ body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
   transform: translateX(12px) !important;
 }
 
+.lasdoscas-player-switch.is-disabled {
+  cursor: not-allowed !important;
+}
+
+.lasdoscas-player-switch input:disabled + span {
+  cursor: not-allowed !important;
+  opacity: 0.45 !important;
+}
+
 .custom-subtitle-wrapper[data-layout-mode="fullscreen"][data-fs-bg-style="none"] {
   background: transparent !important;
   box-shadow: none !important;

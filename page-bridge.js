@@ -116,6 +116,7 @@
 
   function getSnapshot() {
     const moviePlayer = document.querySelector('#movie_player');
+    const pageVideoId = new URL(window.location.href).searchParams.get('v') || '';
     let playerResponse = null;
 
     try {
@@ -126,7 +127,13 @@
       // The player can replace its API object during SPA navigation.
     }
 
-    if (!playerResponse?.captions && window.ytInitialPlayerResponse?.captions) {
+    const initialPlayerResponse = window.ytInitialPlayerResponse;
+    const initialResponseVideoId = initialPlayerResponse?.videoDetails?.videoId || '';
+    if (
+      !playerResponse?.captions &&
+      initialPlayerResponse?.captions &&
+      initialResponseVideoId === pageVideoId
+    ) {
       playerResponse = window.ytInitialPlayerResponse;
     }
 
@@ -135,8 +142,12 @@
 
     const videoId =
       playerResponse?.videoDetails?.videoId ||
-      new URL(window.location.href).searchParams.get('v') ||
+      pageVideoId ||
       '';
+    const captionTracksKnown = Boolean(
+      playerResponse?.videoDetails?.videoId &&
+      playerResponse.videoDetails.videoId === videoId
+    );
     const playerMicroformat = playerResponse?.microformat?.playerMicroformatRenderer;
     const videoTitle =
       playerResponse?.videoDetails?.title ||
@@ -183,6 +194,7 @@
       publishDate,
       trackKey,
       selectedTrack: normalizedTrack,
+      captionTracksKnown,
       trackCount: captionTracks.length,
       isAutoTranslated: autoTranslation.isAutoTranslated,
       autoTranslationLanguageCode: autoTranslation.languageCode

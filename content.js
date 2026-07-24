@@ -318,6 +318,10 @@ let ccButtonObserver = null;
 let playerPluginControl = null;
 let playerPluginSwitch = null;
 let playerControlMonitor = null;
+let isCCAvailable = false;
+let captionTrackAvailability = null;
+let captionTrackAvailabilityVideoId = '';
+let isSyncingPluginState = false;
 
 let currentCaptionContainer = null;
 let containerMonitor = null;
@@ -435,34 +439,40 @@ try {
 }
 
 function syncPluginState() {
-  if (isOrphaned) return;
-  const shouldRun = currentSettings.enabled && isYouTubeWatchPage();
+  if (isOrphaned || isSyncingPluginState) return;
+  isSyncingPluginState = true;
 
-  document.body.setAttribute('data-yt-dual-sub-active', shouldRun ? 'true' : 'false');
-  initCCButtonObserver();
-  
-  const wrapper = document.querySelector('.custom-subtitle-wrapper');
-  if (!shouldRun) {
-    loadingMessageVisible = false;
-    if (wrapper) wrapper.remove();
-    if (flexyObserver) flexyObserver.disconnect();
-    if (playerResizeObserver) playerResizeObserver.disconnect();
-    
-    if (observer) observer.disconnect();
-    if (containerMonitor) clearInterval(containerMonitor);
-    cancelTrackLoad();
-    stopFileRenderer();
-    resetLiveAsrBuffer();
-    currentCaptionContainer = null;
-    
-    clearSubtitleContent();
-    return;
+  try {
+    initCCButtonObserver();
+    const shouldRun = currentSettings.enabled && isCCAvailable && isYouTubeWatchPage();
+
+    document.body.setAttribute('data-yt-dual-sub-active', shouldRun ? 'true' : 'false');
+
+    const wrapper = document.querySelector('.custom-subtitle-wrapper');
+    if (!shouldRun) {
+      loadingMessageVisible = false;
+      if (wrapper) wrapper.remove();
+      if (flexyObserver) flexyObserver.disconnect();
+      if (playerResizeObserver) playerResizeObserver.disconnect();
+
+      if (observer) observer.disconnect();
+      if (containerMonitor) clearInterval(containerMonitor);
+      cancelTrackLoad();
+      stopFileRenderer();
+      resetLiveAsrBuffer();
+      currentCaptionContainer = null;
+
+      clearSubtitleContent();
+      return;
+    }
+
+    triggerLayoutUpdate();
+    startContainerMonitor();
+    initLayoutObserver();
+    initPlayerResizeObserver();
+  } finally {
+    isSyncingPluginState = false;
   }
-
-  triggerLayoutUpdate();
-  startContainerMonitor();
-  initLayoutObserver(); 
-  initPlayerResizeObserver(); 
 }
 
 function showLoadingMessage() {
@@ -472,7 +482,7 @@ function showLoadingMessage() {
   const wrapper = ensureSubtitleContainer();
   if (!wrapper) {
     setTimeout(() => {
-      if (loadingMessageVisible && currentSettings.enabled && isYouTubeWatchPage() && !isOrphaned) {
+      if (loadingMessageVisible && currentSettings.enabled && isCCAvailable && isYouTubeWatchPage() && !isOrphaned) {
         showLoadingMessage();
       }
     }, 150);
@@ -848,7 +858,7 @@ function updateWrapperVisibility() {
 }
 
 function ensureSubtitleContainer() {
-  if (isOrphaned || !currentSettings.enabled) return null;
+  if (isOrphaned || !currentSettings.enabled || !isCCAvailable) return null;
   
   const watchFlexy = document.querySelector('ytd-watch-flexy');
   const moviePlayer = document.querySelector('#movie_player');
@@ -1016,6 +1026,106 @@ function findPlayerSubtitleButton() {
   );
 }
 
+function getCCAvailability() {
+  if (!isYouTubeWatchPage()) return false;
+
+  const ccBtn = findPlayerSubtitleButton();
+  const isExplicitlyDisabled = Boolean(ccBtn && (
+    ccBtn.disabled ||
+    ccBtn.hasAttribute('disabled') ||
+    ccBtn.getAttribute('aria-disabled') === 'true' ||
+    ccBtn.classList.contains('ytp-button-disabled')
+  ));
+  if (isExplicitlyDisabled) return false;
+
+  const currentVideoId = getCurrentVideoId();
+  if (
+    captionTrackAvailabilityVideoId === currentVideoId &&
+    captionTrackAvailability !== null
+  ) {
+    return captionTrackAvailability;
+  }
+
+  // Until the player response identifies the current video's caption tracks,
+  // keep both switches disabled instead of treating a visually present CC
+  // button as proof that captions exist.
+  return false;
+}
+
+function hasKnownCCAvailability() {
+  return Boolean(
+    getCurrentVideoId() &&
+    captionTrackAvailabilityVideoId === getCurrentVideoId() &&
+    captionTrackAvailability !== null
+  );
+}
+
+function cacheCCAvailability(snapshot) {
+  const currentVideoId = getCurrentVideoId();
+  if (
+    !snapshot?.captionTracksKnown ||
+    !snapshot.videoId ||
+    snapshot.videoId !== currentVideoId
+  ) {
+    return false;
+  }
+
+  captionTrackAvailabilityVideoId = snapshot.videoId;
+  captionTrackAvailability = Number(snapshot.trackCount) > 0;
+  updateCCAvailability();
+  return true;
+}
+
+function resetCCAvailability() {
+  captionTrackAvailabilityVideoId = getCurrentVideoId();
+  captionTrackAvailability = null;
+  updateCCAvailability();
+}
+
+async function refreshCCAvailability() {
+  const requestedVideoId = getCurrentVideoId();
+  if (!requestedVideoId || !isYouTubeWatchPage()) {
+    resetCCAvailability();
+    return false;
+  }
+
+  const snapshot = await requestPlayerSnapshot();
+  if (requestedVideoId !== getCurrentVideoId()) return false;
+  cacheCCAvailability(snapshot);
+  return getCCAvailability();
+}
+
+function updateCCAvailability() {
+  const nextAvailability = getCCAvailability();
+  const availabilityChanged = nextAvailability !== isCCAvailable;
+  isCCAvailable = nextAvailability;
+
+  if (playerPluginSwitch) {
+    playerPluginSwitch.disabled = !isCCAvailable;
+    const switchLabel = playerPluginSwitch.closest('.lasdoscas-player-switch');
+    if (switchLabel) {
+      switchLabel.classList.toggle('is-disabled', !isCCAvailable);
+      switchLabel.setAttribute('aria-disabled', String(!isCCAvailable));
+    }
+  }
+
+  if (availabilityChanged) {
+    chrome.runtime.sendMessage({
+      action: 'cc_availability_changed',
+      ccAvailable: isCCAvailable
+    }, () => {
+      const suppressMessageError = chrome.runtime.lastError;
+    });
+
+    syncPluginState();
+    if (isCCAvailable && currentSettings.enabled) {
+      beginTrackLoad('caption availability changed');
+    }
+  }
+
+  return isCCAvailable;
+}
+
 function getPlayerControlsContext() {
   const ccBtn = findPlayerSubtitleButton();
   const controls =
@@ -1067,6 +1177,7 @@ function ensurePlayerPluginControl() {
   playerPluginControl = control;
   playerPluginSwitch = control.querySelector('input');
   if (playerPluginSwitch) playerPluginSwitch.checked = Boolean(currentSettings.enabled);
+  updateCCAvailability();
   return true;
 }
 
@@ -1074,27 +1185,44 @@ function initCCButtonObserver() {
   if (ccButtonObserver) ccButtonObserver.disconnect();
   if (playerControlMonitor) clearInterval(playerControlMonitor);
   playerControlMonitor = null;
-  if (!isYouTubeWatchPage()) return;
+  if (!isYouTubeWatchPage()) {
+    updateCCAvailability();
+    return;
+  }
 
   // YouTube can replace the entire chrome control tree without emitting a
   // navigation event. Keep a lightweight reconciliation pass so the plugin
   // switch is reattached after those player state changes as well.
   playerControlMonitor = setInterval(() => {
     if (!checkContext() || isOrphaned || !isYouTubeWatchPage()) return;
-    ensurePlayerPluginControl();
+    if (!ensurePlayerPluginControl()) updateCCAvailability();
+    if (!hasKnownCCAvailability()) refreshCCAvailability();
   }, 1000);
 
+  refreshCCAvailability();
+
   if (!ensurePlayerPluginControl()) {
+    updateCCAvailability();
     return;
   }
 
   const controls = playerPluginControl?.parentElement;
   if (!controls) return;
-  ccButtonObserver = new MutationObserver(() => {
+  ccButtonObserver = new MutationObserver((mutations) => {
     if (!checkContext() || isOrphaned) return;
+    const ccBtn = findPlayerSubtitleButton();
+    const shouldReconcile = mutations.some((mutation) =>
+      mutation.type === 'childList' || mutation.target === ccBtn
+    );
+    if (!shouldReconcile) return;
     ensurePlayerPluginControl();
   });
-  ccButtonObserver.observe(controls, { childList: true });
+  ccButtonObserver.observe(controls, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['disabled', 'aria-disabled', 'class']
+  });
 }
 
 function updateSubtitleContent(source, translated, isHtmlFlag = false) {
@@ -1507,12 +1635,15 @@ function handlePlayerBridgeMessage(event) {
     clearTimeout(pendingRequest.timeoutId);
     bridgeRequests.delete(message.requestId);
     cachePlayerSnapshotMetadata(message.snapshot);
+    cacheCCAvailability(message.snapshot);
     pendingRequest.resolve(message.snapshot || null);
     return;
   }
 
-  if (message.type === 'TRACK_CHANGED' && currentSettings.enabled && !isOrphaned) {
+  if (message.type === 'TRACK_CHANGED') {
     cachePlayerSnapshotMetadata(message.snapshot);
+    cacheCCAvailability(message.snapshot);
+    if (!currentSettings.enabled || isOrphaned) return;
     const nextTrackKey = message.snapshot?.trackKey || '';
     if (currentTrackKey && nextTrackKey && nextTrackKey !== currentTrackKey) {
       beginTrackLoad('YouTube caption track changed');
@@ -1551,7 +1682,7 @@ function cancelTrackLoad() {
 }
 
 function beginTrackLoad(reason = 'refresh') {
-  if (isOrphaned || !currentSettings.enabled || !isYouTubeWatchPage()) return;
+  if (isOrphaned || !currentSettings.enabled || !isCCAvailable || !isYouTubeWatchPage()) return;
 
   cancelTrackLoad();
   stopFileRenderer();
@@ -2226,6 +2357,7 @@ window.addEventListener('yt-navigate-finish', () => {
   if (!checkContext() || isOrphaned) return;
   currentCaptionContainer = null;
   resetCurrentVideoMetadata();
+  resetCCAvailability();
 
   const oldWrapper = document.querySelector('.custom-subtitle-wrapper');
   if (oldWrapper) oldWrapper.remove();
@@ -2317,7 +2449,12 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (isOrphaned) return;
   
-  if (message.action === "toggle_settings_panel") {
+  if (message.action === "get_cc_availability") {
+    refreshCCAvailability().then((ccAvailable) => {
+      sendResponse({ ccAvailable });
+    });
+    return true;
+  } else if (message.action === "toggle_settings_panel") {
     if (isNativePopupActive) return;
     toggleFullscreenSettings();
   } else if (message.action === "close_settings_panel") {
