@@ -6,12 +6,6 @@
   <a href="#español">Español</a>
 </p>
 
-lasDoscas is a free, lightweight browser extension that displays synchronized original and translated subtitles on YouTube watch pages. It supports manually created and auto-generated captions, 55 translation languages, three player layouts, and detailed subtitle styling.
-
-Chrome Web Store: [Install lasDoscas](https://chromewebstore.google.com/detail/lasdoscas-youtube-dual-su/loefcmgapbdgdldkcekokidchffegceg)
-
----
-
 ## 简体中文
 
 lasDoscas 是一款免费、轻量的 YouTube 双语字幕扩展。它会同时显示原文与译文，并根据视频播放时间独立同步字幕，适用于普通视图、影院模式和全屏模式。
@@ -168,41 +162,6 @@ lasDoscas es una extensión gratuita y ligera de subtítulos duales para YouTube
 
 ---
 
-## Supported Translation Languages
-
-The target-language selector currently contains 55 options:
-
-English, 中文（简体）, 中文（繁體）, Español, Français, Français canadien, Deutsch, 日本語, 한국어, Português, Bahasa Indonesia, Bahasa Melayu, Русский, العربية, हिन्दी, தமிழ், ภาษาไทย, Tiếng Việt, Türkçe, Polski, Nederlands, Svenska, Dansk, Norsk, Suomi, Italiano, Română, Magyar, Čeština, Hrvatski, Ελληνικά, עברית, Filipino, Українська, Euskara, Català, Galego, Íslenska, Kiswahili, eesti, latviešu, lietuvių, slovenčina, slovenščina, български, српски, اردو, فارسی, मराठी, বাংলা, ગુજરાતી, తెలుగు, ಕನ್ನಡ, മലയാളം, አማርኛ.
-
-## Browser Compatibility
-
-lasDoscas targets Manifest V3 browsers based on Chromium, including Google Chrome, Microsoft Edge, Brave, Opera, and Vivaldi. YouTube and browser updates can affect extension behavior, so the latest stable browser version is recommended.
-
-## Privacy And Permissions
-
-lasDoscas does not collect, store, or transmit personal data or browsing history. Preferences are stored on the device through `chrome.storage.local`. Subtitle text is sent to the configured Google translation endpoint only when translation is needed. See [PRIVACY_POLICY.md](PRIVACY_POLICY.md) for the full policy.
-
-The extension requests only the access needed for its features:
-
-- `storage`: saves the enable state, target language, theme, and subtitle styles locally.
-- `*://*.youtube.com/*`: reads the current video's caption/player state and inserts the bilingual subtitle UI on YouTube.
-- `https://translate.googleapis.com/*`: requests subtitle translations.
-
-No account, ads, analytics, or payment is required.
-
-## Development Notes
-
-This is a Manifest V3 extension with no build step or package installation.
-
-- `manifest.json`: extension metadata, permissions, commands, and script registration.
-- `page-bridge.js`: reads YouTube player/caption metadata in the page's main world and sends normalized snapshots through `window.postMessage`.
-- `content.js`: manages caption-track state, JSON3/ASR parsing, translation preloading, time-synchronized rendering, copying, player controls, and the in-player settings panel.
-- `background.js`: performs translation requests and forwards the keyboard command to the active tab.
-- `popup.html` / `popup.js`: settings UI, localization, instant local persistence, reset, and undo behavior.
-- `style.css`: subtitle layouts, player controls, copy feedback, and fullscreen presentation.
-- `_locales/`: localized extension name, description, and command text.
-
-For a manual smoke test, load the unpacked extension and verify a manually captioned video plus an auto-generated-caption video in default view, theater mode, and fullscreen. Also check seeking, caption-track changes, target-language changes, both copy modes, the player switch, the settings shortcut, and light/dark settings themes.
 
 ## License
 
