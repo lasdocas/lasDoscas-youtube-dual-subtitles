@@ -169,10 +169,14 @@
     }
 
     // YouTube clears the active caption track when its native CC button is
-    // switched off. Preserve the last track identity so that action does not
-    // stop, restart, or change lasDoscas subtitles.
-    if (hasTrackIdentity(activeTrack)) lastActiveTrack = activeTrack;
-    const effectiveActiveTrack = hasTrackIdentity(activeTrack) ? activeTrack : lastActiveTrack;
+    // switched off. Keep its identity for track selection, but report the
+    // enabled state separately so the extension can ask the user to turn CC on.
+    const ccButton = document.querySelector('.ytp-subtitles-button');
+    const ariaPressed = ccButton?.getAttribute('aria-pressed');
+    const captionsEnabled = ariaPressed === 'true' ||
+      (ariaPressed !== 'false' && hasTrackIdentity(activeTrack));
+    if (captionsEnabled) lastActiveTrack = activeTrack;
+    const effectiveActiveTrack = captionsEnabled ? activeTrack : lastActiveTrack;
     const selectedTrack =
       selectTrack(captionTracks, effectiveActiveTrack) ||
       (hasTrackIdentity(lastActiveTrack) ? lastActiveTrack : null);
@@ -184,6 +188,7 @@
           normalizedTrack.languageCode,
           normalizedTrack.kind,
           normalizedTrack.vssId,
+          captionsEnabled ? 'captions:on' : 'captions:off',
           autoTranslation.isAutoTranslated ? `auto-translate:${autoTranslation.languageCode || 'on'}` : 'source'
         ].join('|')
       : `${videoId}|none`;
@@ -194,6 +199,7 @@
       publishDate,
       trackKey,
       selectedTrack: normalizedTrack,
+      captionsEnabled,
       captionTracksKnown,
       trackCount: captionTracks.length,
       isAutoTranslated: autoTranslation.isAutoTranslated,

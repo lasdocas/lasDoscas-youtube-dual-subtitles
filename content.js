@@ -65,10 +65,77 @@ const loadingMessageDict = Object.freeze({
   am: 'lasDoscas ባለሁለት ቋንቋ ንዑስ ርዕሶችን በመጫን ላይ ነው'
 });
 
+const youtubeCaptionsDisabledMessageDict = Object.freeze({
+  'zh-cn': '请开启 YouTube 字幕，以显示双语字幕',
+  'zh-tw': '請開啟 YouTube 字幕，以顯示雙語字幕',
+  zh: '请开启 YouTube 字幕，以显示双语字幕',
+  en: 'Turn on YouTube captions to display bilingual subtitles',
+  es: 'Activa los subtítulos de YouTube para mostrar subtítulos bilingües',
+  fr: 'Activez les sous-titres YouTube pour afficher des sous-titres bilingues',
+  'fr-ca': 'Activez les sous-titres YouTube pour afficher des sous-titres bilingues',
+  de: 'Aktivieren Sie die YouTube-Untertitel, um zweisprachige Untertitel anzuzeigen',
+  ja: '二言語字幕を表示するには、YouTube の字幕をオンにしてください',
+  ko: '이중 언어 자막을 표시하려면 YouTube 자막을 켜세요',
+  pt: 'Ative as legendas do YouTube para exibir legendas bilíngues',
+  id: 'Aktifkan subtitel YouTube untuk menampilkan subtitel dwibahasa',
+  ms: 'Hidupkan sari kata YouTube untuk memaparkan sari kata dwibahasa',
+  ru: 'Включите субтитры YouTube, чтобы отображать двуязычные субтитры',
+  ar: 'فعّل الترجمة المصاحبة في YouTube لعرض ترجمة ثنائية اللغة',
+  hi: 'द्विभाषी उपशीर्षक दिखाने के लिए YouTube उपशीर्षक चालू करें',
+  ta: 'இருமொழி வசனங்களைக் காட்ட YouTube வசனங்களை இயக்கவும்',
+  th: 'เปิดคำบรรยาย YouTube เพื่อแสดงคำบรรยายสองภาษา',
+  vi: 'Bật phụ đề YouTube để hiển thị phụ đề song ngữ',
+  tr: 'İki dilli altyazıları görüntülemek için YouTube altyazılarını açın',
+  pl: 'Włącz napisy w YouTube, aby wyświetlać napisy dwujęzyczne',
+  nl: 'Schakel YouTube-ondertiteling in om tweetalige ondertiteling weer te geven',
+  sv: 'Aktivera YouTube-undertexter för att visa tvåspråkiga undertexter',
+  da: 'Slå YouTube-undertekster til for at vise tosprogede undertekster',
+  no: 'Slå på YouTube-teksting for å vise tospråklige undertekster',
+  fi: 'Ota YouTube-tekstitys käyttöön näyttääksesi kaksikieliset tekstitykset',
+  it: 'Attiva i sottotitoli di YouTube per visualizzare i sottotitoli bilingui',
+  ro: 'Activați subtitrările YouTube pentru a afișa subtitrări bilingve',
+  hu: 'Kapcsolja be a YouTube-feliratokat a kétnyelvű feliratok megjelenítéséhez',
+  cs: 'Zapněte titulky YouTube, aby se zobrazovaly dvojjazyčné titulky',
+  hr: 'Uključite YouTube titlove za prikaz dvojezičnih titlova',
+  el: 'Ενεργοποιήστε τους υπότιτλους στο YouTube για να εμφανίζονται δίγλωσσοι υπότιτλοι',
+  iw: 'הפעילו את הכתוביות ב-YouTube כדי להציג כתוביות דו-לשוניות',
+  tl: 'I-on ang mga subtitle sa YouTube upang magpakita ng dalawang-wikang subtitle',
+  uk: 'Увімкніть субтитри YouTube, щоб відображати двомовні субтитри',
+  eu: 'Aktibatu YouTubeko azpitituluak azpititulu elebidunak bistaratzeko',
+  ca: 'Activa els subtítols de YouTube per mostrar subtítols bilingües',
+  gl: 'Activa os subtítulos de YouTube para mostrar subtítulos bilingües',
+  is: 'Kveiktu á YouTube-texta til að birta tvítyngdan texta',
+  sw: 'Washa manukuu ya YouTube ili kuonyesha manukuu ya lugha mbili',
+  et: 'Lülitage YouTube’i subtiitrid sisse, et kuvada kakskeelseid subtiitreid',
+  lv: 'Ieslēdziet YouTube subtitrus, lai rādītu divvalodu subtitrus',
+  lt: 'Įjunkite „YouTube“ subtitrus, kad būtų rodomi dvikalbiai subtitrai',
+  sk: 'Zapnite titulky YouTube, aby sa zobrazovali dvojjazyčné titulky',
+  sl: 'Vklopite podnapise v YouTubu za prikaz dvojezičnih podnapisov',
+  bg: 'Включете субтитрите в YouTube, за да се показват двуезични субтитри',
+  sr: 'Укључите YouTube титлове за приказ двојезичних титлова',
+  ur: 'دو لسانی سب ٹائٹلز دکھانے کے لیے YouTube سب ٹائٹلز آن کریں',
+  fa: 'برای نمایش زیرنویس دوزبانه، زیرنویس YouTube را روشن کنید',
+  mr: 'द्विभाषिक उपशीर्षके दाखवण्यासाठी YouTube उपशीर्षके सुरू करा',
+  bn: 'দ্বিভাষিক সাবটাইটেল দেখাতে YouTube সাবটাইটেল চালু করুন',
+  gu: 'દ્વિભાષી સબટાઇટલ બતાવવા માટે YouTube સબટાઇટલ ચાલુ કરો',
+  te: 'ద్విభాషా ఉపశీర్షికలను చూపడానికి YouTube ఉపశీర్షికలను ఆన్ చేయండి',
+  kn: 'ದ್ವಿಭಾಷಾ ಉಪಶೀರ್ಷಿಕೆಗಳನ್ನು ತೋರಿಸಲು YouTube ಉಪಶೀರ್ಷಿಕೆಗಳನ್ನು ಆನ್ ಮಾಡಿ',
+  ml: 'ദ്വിഭാഷാ സബ്‌ടൈറ്റിലുകൾ കാണിക്കാൻ YouTube സബ്‌ടൈറ്റിലുകൾ ഓണാക്കുക',
+  am: 'ባለሁለት ቋንቋ ንዑስ ርዕሶችን ለማሳየት የYouTube ንዑስ ርዕሶችን ያብሩ'
+});
+
 function getLoadingMessage() {
   const language = (currentSettings.lang || 'en').toLowerCase();
   const prefix = language.split('-')[0];
   return loadingMessageDict[language] || loadingMessageDict[prefix] || loadingMessageDict.en;
+}
+
+function getYouTubeCaptionsDisabledMessage() {
+  const language = (currentSettings.lang || 'en').toLowerCase();
+  const prefix = language.split('-')[0];
+  return youtubeCaptionsDisabledMessageDict[language] ||
+    youtubeCaptionsDisabledMessageDict[prefix] ||
+    youtubeCaptionsDisabledMessageDict.en;
 }
 
 function isSpaceDelimitedLang(langCode) {
@@ -319,6 +386,7 @@ let playerPluginControl = null;
 let playerPluginSwitch = null;
 let playerControlMonitor = null;
 let isCCAvailable = false;
+let isYouTubeCCEnabled = null;
 let captionTrackAvailability = null;
 let captionTrackAvailabilityVideoId = '';
 let isSyncingPluginState = false;
@@ -328,6 +396,7 @@ let containerMonitor = null;
 
 const TRACK_MODE = Object.freeze({
   UNKNOWN: 'UNKNOWN',
+  WAITING_FOR_YOUTUBE_CAPTIONS: 'WAITING_FOR_YOUTUBE_CAPTIONS',
   DISCOVERING: 'DISCOVERING',
   YOUTUBE_AUTO_TRANSLATE: 'YOUTUBE_AUTO_TRANSLATE',
   FILE_WARMING: 'FILE_WARMING',
@@ -489,6 +558,19 @@ function showLoadingMessage() {
     return;
   }
   updateSubtitleContent('\u00A0', getSecondSubtitleStatusHtml(lastText), true);
+  applyStylesToDOM();
+}
+
+function showYouTubeCaptionsDisabledMessage() {
+  cancelTrackLoad();
+  stopFileRenderer();
+  resetLiveAsrBuffer();
+  hideLoadingMessage();
+  trackMode = TRACK_MODE.WAITING_FOR_YOUTUBE_CAPTIONS;
+  const message = getYouTubeCaptionsDisabledMessage();
+  lastText = message;
+  lastMatchedSource = '';
+  updateSubtitleContent('\u00A0', getSecondSubtitleStatusHtml(message), true);
   applyStylesToDOM();
 }
 
@@ -769,7 +851,9 @@ function applyStylesToDOM() {
 
   const isSrcBold = isFullscreen ? currentSettings.srcFsBold : currentSettings.srcNormalBold;
   const isTransBold = isFullscreen ? currentSettings.transFsBold : currentSettings.transNormalBold;
-  const forceStatusLayout = loadingMessageVisible || trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE;
+  const forceStatusLayout = loadingMessageVisible ||
+    trackMode === TRACK_MODE.WAITING_FOR_YOUTUBE_CAPTIONS ||
+    trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE;
 
   if (sourceText) {
     sourceText.style.setProperty('font-family', currentSettings.font, 'important');
@@ -837,6 +921,7 @@ function updateWrapperVisibility() {
   const canRenderWithoutCc = trackMode === TRACK_MODE.FILE_READY ||
     trackMode === TRACK_MODE.LIVE_ASR ||
     trackMode === TRACK_MODE.RETRYABLE_ERROR ||
+    trackMode === TRACK_MODE.WAITING_FOR_YOUTUBE_CAPTIONS ||
     trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE;
   const isFullscreen = wrapper.getAttribute('data-layout-mode') === 'fullscreen';
   
@@ -844,6 +929,7 @@ function updateWrapperVisibility() {
   const bothHidden = !loadingMessageVisible &&
     !currentSettings.showSrc &&
     !currentSettings.showTrans &&
+    trackMode !== TRACK_MODE.WAITING_FOR_YOUTUBE_CAPTIONS &&
     trackMode !== TRACK_MODE.YOUTUBE_AUTO_TRANSLATE;
 
   if (bothHidden || (!canRenderWithoutCc && !lastText && !lastMatchedSource && !loadingMessageVisible)) {
@@ -1026,6 +1112,33 @@ function findPlayerSubtitleButton() {
   );
 }
 
+function getYouTubeCCEnabledFromButton() {
+  const ccBtn = findPlayerSubtitleButton();
+  if (!ccBtn) return null;
+  const ariaPressed = ccBtn.getAttribute('aria-pressed');
+  if (ariaPressed === 'true') return true;
+  if (ariaPressed === 'false') return false;
+  return null;
+}
+
+function setYouTubeCCEnabled(nextEnabled, reason = 'state changed') {
+  if (typeof nextEnabled !== 'boolean' || nextEnabled === isYouTubeCCEnabled) return false;
+  isYouTubeCCEnabled = nextEnabled;
+
+  if (!currentSettings.enabled || !isCCAvailable || !isYouTubeWatchPage() || isOrphaned) {
+    return true;
+  }
+
+  if (isYouTubeCCEnabled) beginTrackLoad(`YouTube captions enabled: ${reason}`);
+  else showYouTubeCaptionsDisabledMessage();
+  return true;
+}
+
+function cacheYouTubeCCEnabled(snapshot) {
+  if (!snapshot?.videoId || snapshot.videoId !== getCurrentVideoId()) return false;
+  return setYouTubeCCEnabled(snapshot.captionsEnabled, 'player snapshot');
+}
+
 function getCCAvailability() {
   if (!isYouTubeWatchPage()) return false;
 
@@ -1079,6 +1192,7 @@ function cacheCCAvailability(snapshot) {
 function resetCCAvailability() {
   captionTrackAvailabilityVideoId = getCurrentVideoId();
   captionTrackAvailability = null;
+  isYouTubeCCEnabled = null;
   updateCCAvailability();
 }
 
@@ -1196,6 +1310,8 @@ function initCCButtonObserver() {
   playerControlMonitor = setInterval(() => {
     if (!checkContext() || isOrphaned || !isYouTubeWatchPage()) return;
     if (!ensurePlayerPluginControl()) updateCCAvailability();
+    const ccEnabled = getYouTubeCCEnabledFromButton();
+    if (ccEnabled !== null) setYouTubeCCEnabled(ccEnabled, 'player control');
     if (!hasKnownCCAvailability()) refreshCCAvailability();
   }, 1000);
 
@@ -1216,12 +1332,14 @@ function initCCButtonObserver() {
     );
     if (!shouldReconcile) return;
     ensurePlayerPluginControl();
+    const ccEnabled = getYouTubeCCEnabledFromButton();
+    if (ccEnabled !== null) setYouTubeCCEnabled(ccEnabled, 'caption button');
   });
   ccButtonObserver.observe(controls, {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['disabled', 'aria-disabled', 'class']
+    attributeFilter: ['disabled', 'aria-disabled', 'aria-pressed', 'class']
   });
 }
 
@@ -1591,7 +1709,8 @@ function bindMutationObserver(containerTarget) {
     }
     if (!currentSettings.enabled) return;
 
-    if (trackMode === TRACK_MODE.FILE_WARMING ||
+    if (trackMode === TRACK_MODE.DISCOVERING ||
+        trackMode === TRACK_MODE.FILE_WARMING ||
         trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE) return;
 
     if (trackMode === TRACK_MODE.FILE_READY) {
@@ -1635,6 +1754,7 @@ function handlePlayerBridgeMessage(event) {
     clearTimeout(pendingRequest.timeoutId);
     bridgeRequests.delete(message.requestId);
     cachePlayerSnapshotMetadata(message.snapshot);
+    cacheYouTubeCCEnabled(message.snapshot);
     cacheCCAvailability(message.snapshot);
     pendingRequest.resolve(message.snapshot || null);
     return;
@@ -1643,7 +1763,9 @@ function handlePlayerBridgeMessage(event) {
   if (message.type === 'TRACK_CHANGED') {
     cachePlayerSnapshotMetadata(message.snapshot);
     cacheCCAvailability(message.snapshot);
+    const ccStateChanged = cacheYouTubeCCEnabled(message.snapshot);
     if (!currentSettings.enabled || isOrphaned) return;
+    if (message.snapshot?.captionsEnabled === false || ccStateChanged) return;
     const nextTrackKey = message.snapshot?.trackKey || '';
     if (currentTrackKey && nextTrackKey && nextTrackKey !== currentTrackKey) {
       beginTrackLoad('YouTube caption track changed');
@@ -1684,11 +1806,16 @@ function cancelTrackLoad() {
 function beginTrackLoad(reason = 'refresh') {
   if (isOrphaned || !currentSettings.enabled || !isCCAvailable || !isYouTubeWatchPage()) return;
 
+  const buttonState = getYouTubeCCEnabledFromButton();
+  if (buttonState !== null) isYouTubeCCEnabled = buttonState;
+  if (isYouTubeCCEnabled !== true) {
+    showYouTubeCaptionsDisabledMessage();
+    return;
+  }
+
   cancelTrackLoad();
   stopFileRenderer();
   resetLiveAsrBuffer();
-  hideLoadingMessage();
-  clearSubtitleContent();
 
   const generation = trackLoadGeneration;
   trackMode = TRACK_MODE.DISCOVERING;
@@ -2088,8 +2215,9 @@ function renderFileCue() {
 
   if (!isAutoGenerated) {
     // Preserve the existing manually authored caption behavior: both rows are
-    // cleared until the exact translated cue is ready.
-    clearSubtitleContent();
+    // cleared until the exact translated cue is ready. During initial loading,
+    // keep the status container intact so it can be replaced in one paint.
+    if (!loadingMessageVisible) clearSubtitleContent();
   } else {
     // Prefer a single paired paint. If translation is unusually slow, expose
     // the source after a bounded wait and use the existing expectation hint.
@@ -2232,6 +2360,11 @@ async function preloadFullTrack(generation, attempt) {
 
   const snapshot = await requestPlayerSnapshot();
   if (generation !== trackLoadGeneration) return;
+
+  if (snapshot?.captionsEnabled === false) {
+    showYouTubeCaptionsDisabledMessage();
+    return;
+  }
 
   const selectedTrack = snapshot?.selectedTrack;
   currentTrackKey = snapshot?.trackKey || '';
