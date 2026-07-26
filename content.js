@@ -414,6 +414,8 @@ const ASR_EMERGENCY_MAX_COMPACT_CHARS = 180;
 const DISPLAY_MAX_CHARS = 180;
 const DISPLAY_MAX_COMPACT_CHARS = 60;
 const DISPLAY_MAX_PARTS = 4;
+const DISPLAY_MIN_WORDS_PER_PART = 3;
+const DISPLAY_MIN_COMPACT_CHARS_PER_PART = 4;
 const AUTO_FILE_RENDER_INTERVAL_MS = 50;
 const FILE_RENDER_INTERVAL_MS = 50;
 const COPY_FEEDBACK_DURATION_MS = 500;
@@ -1540,6 +1542,18 @@ function getCaptionDisplayPartCount(text, languageCode) {
   );
 }
 
+function getCaptionDisplayPartCapacity(text, languageCode) {
+  const normalized = normalizeCaptionText(text);
+  if (!normalized) return 1;
+  const unitCount = isSpaceDelimitedLang(languageCode)
+    ? normalized.split(/\s+/).length
+    : normalized.length;
+  const minimumUnits = isSpaceDelimitedLang(languageCode)
+    ? DISPLAY_MIN_WORDS_PER_PART
+    : DISPLAY_MIN_COMPACT_CHARS_PER_PART;
+  return Math.max(1, Math.floor(unitCount / minimumUnits));
+}
+
 function getCaptionDisplayBoundaries(text) {
   const boundaries = [];
   const punctuationPattern = /[.!?…。！？؟۔।॥]+["'”’」』）)\]}】]*|[,;:，；：、]+/gu;
@@ -1598,7 +1612,10 @@ function splitCaptionIntoDisplayParts(text, languageCode, requestedPartCount, bo
     })[0];
 
     if (!selected) {
-      selected = { index: Math.min(maximumBoundary, Math.max(previousBoundary + 1, targetIndex)) };
+      const minimumBoundary = previousBoundary + minimumPartLength;
+      selected = {
+        index: Math.min(maximumBoundary, Math.max(minimumBoundary, targetIndex))
+      };
     }
     selectedBoundaries.push(selected.index);
     previousBoundary = selected.index;
@@ -1619,37 +1636,46 @@ function buildBilingualDisplayParts(sourceText, translation) {
   const translationPartCount = translation
     ? getCaptionDisplayPartCount(translation, currentSettings.lang)
     : 1;
+  const sourcePartCapacity = getCaptionDisplayPartCapacity(sourceText, currentSourceLang);
+  const translationPartCapacity = translation
+    ? getCaptionDisplayPartCapacity(translation, currentSettings.lang)
+    : sourcePartCapacity;
   const partCount = Math.min(
     DISPLAY_MAX_PARTS,
-    Math.max(sourcePartCount, translationPartCount)
+    Math.max(sourcePartCount, translationPartCount),
+    sourcePartCapacity,
+    translationPartCapacity
   );
   const sourceStrongRatios = getStrongCaptionBoundaryRatios(sourceText, currentSourceLang);
   const translationStrongRatios = translation
     ? getStrongCaptionBoundaryRatios(translation, currentSettings.lang)
     : [];
-  const sharedBoundaryRatios = sourceStrongRatios.length === partCount - 1
+  // Character offsets are language-local: applying one language's sentence
+  // ratio to the other can expose translated content before its source words.
+  const sourceBoundaryRatios = sourceStrongRatios.length === partCount - 1
     ? sourceStrongRatios
-    : translationStrongRatios.length === partCount - 1
-      ? translationStrongRatios
-      : [];
+    : [];
+  const translationBoundaryRatios = translationStrongRatios.length === partCount - 1
+    ? translationStrongRatios
+    : [];
   const sourceParts = splitCaptionIntoDisplayParts(
     sourceText,
     currentSourceLang,
     partCount,
-    sharedBoundaryRatios
+    sourceBoundaryRatios
   );
   const translationParts = translation
     ? splitCaptionIntoDisplayParts(
         translation,
         currentSettings.lang,
         partCount,
-        sharedBoundaryRatios
+        translationBoundaryRatios
       )
     : Array(partCount).fill('');
 
   return Array.from({ length: partCount }, (_, index) => ({
-    source: sourceParts[index] || sourceParts[sourceParts.length - 1] || '',
-    translation: translationParts[index] || translationParts[translationParts.length - 1] || ''
+    source: sourceParts[index] || '',
+    translation: translationParts[index] || ''
   }));
 }
 
