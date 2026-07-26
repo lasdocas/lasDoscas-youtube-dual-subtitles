@@ -144,17 +144,6 @@ function isSpaceDelimitedLang(langCode) {
   return !['ja', 'zh', 'ko', 'th', 'lo', 'km', 'my'].includes(prefix);
 }
 
-function getLanguagePrefix(langCode) {
-  return (langCode || '').toLowerCase().split('-')[0];
-}
-
-function needsCompleteLiveAsrSentence() {
-  const sourcePrefix = getLanguagePrefix(currentSourceLang);
-  const targetPrefix = getLanguagePrefix(currentSettings.lang);
-  return sourcePrefix === 'de' || sourcePrefix === 'ja' ||
-    targetPrefix === 'de' || targetPrefix === 'ja';
-}
-
 function getHintMessage(targetLang) {
   const lang = targetLang || 'en';
   const prefix = lang.toLowerCase().split('-')[0];
@@ -418,7 +407,6 @@ const PRELOAD_BATCH_DELAY_MS = 80;
 const DOM_TRANSLATION_DEBOUNCE_MS = 80;
 const LIVE_ASR_PREFETCH_MS = 120;
 const LIVE_ASR_COMMIT_STABILITY_MS = 260;
-const LIVE_ASR_SENTENCE_FINALIZE_MS = 850;
 const ASR_STRUCTURAL_GAP_SECONDS = 1.6;
 const ASR_EMERGENCY_MAX_DURATION_SECONDS = 30;
 const ASR_EMERGENCY_MAX_CHARS = 320;
@@ -1417,12 +1405,9 @@ let translateDebounceTimer = null;
 let liveAsrPrefetchTimer = null;
 let liveAsrCommitTimer = null;
 let liveAsrClearTimer = null;
-let liveAsrSentenceFinalizeTimer = null;
 let liveAsrPendingText = '';
 let liveAsrCommittedText = '';
 let liveAsrRenderSequence = 0;
-let liveAsrSentenceBuffer = '';
-let liveAsrSentenceStartedAt = 0;
 
 function normalizeCaptionText(text) {
   return (text || '')
@@ -1711,34 +1696,6 @@ function getRollingAsrDelta(previousText, nextText, useSpace) {
   return next;
 }
 
-function mergeLiveAsrFragments(baseText, nextText) {
-  const base = normalizeCaptionText(baseText);
-  const next = normalizeCaptionText(nextText);
-  if (!base) return next;
-  if (!next || base === next || base.includes(next)) return base;
-  if (next.includes(base)) return next;
-
-  if (isSpaceDelimitedLang(currentSourceLang)) {
-    const baseWords = base.split(' ');
-    const nextWords = next.split(' ');
-    const maxOverlap = Math.min(baseWords.length, nextWords.length);
-    for (let size = maxOverlap; size >= 1; size -= 1) {
-      if (baseWords.slice(-size).join(' ') === nextWords.slice(0, size).join(' ')) {
-        return normalizeCaptionText([...baseWords, ...nextWords.slice(size)].join(' '));
-      }
-    }
-    return `${base} ${next}`;
-  }
-
-  const maxOverlap = Math.min(base.length, next.length);
-  for (let size = maxOverlap; size >= 2; size -= 1) {
-    if (base.slice(-size) === next.slice(0, size)) {
-      return normalizeCaptionText(base + next.slice(size));
-    }
-  }
-  return normalizeCaptionText(base + next);
-}
-
 function renderLiveAsrContent(sourceText, translation, useHint, renderSequence, generation) {
   if (renderSequence !== liveAsrRenderSequence || generation !== trackLoadGeneration) return;
   hideLoadingMessage();
@@ -1755,15 +1712,11 @@ function resetLiveAsrBuffer() {
   clearTimeout(liveAsrPrefetchTimer);
   clearTimeout(liveAsrCommitTimer);
   clearTimeout(liveAsrClearTimer);
-  clearTimeout(liveAsrSentenceFinalizeTimer);
   liveAsrPrefetchTimer = null;
   liveAsrCommitTimer = null;
   liveAsrClearTimer = null;
-  liveAsrSentenceFinalizeTimer = null;
   liveAsrPendingText = '';
   liveAsrCommittedText = '';
-  liveAsrSentenceBuffer = '';
-  liveAsrSentenceStartedAt = 0;
   liveAsrRenderSequence += 1;
 }
 
@@ -1785,19 +1738,6 @@ function translateLiveAsrSentence(sourceText, renderSequence, generation) {
   });
 }
 
-function finalizeSentenceAwareLiveAsr(generation) {
-  clearTimeout(liveAsrSentenceFinalizeTimer);
-  liveAsrSentenceFinalizeTimer = null;
-  const completeSentence = normalizeCaptionText(liveAsrSentenceBuffer);
-  if (!completeSentence || generation !== trackLoadGeneration) return;
-
-  liveAsrSentenceBuffer = '';
-  liveAsrSentenceStartedAt = 0;
-  liveAsrCommittedText = completeSentence;
-  const renderSequence = ++liveAsrRenderSequence;
-  translateLiveAsrSentence(completeSentence, renderSequence, generation);
-}
-
 function commitLiveAsrSentence(text = liveAsrPendingText) {
   const finalText = normalizeCaptionText(text);
   if (!finalText || finalText === liveAsrCommittedText) return;
@@ -1806,61 +1746,17 @@ function commitLiveAsrSentence(text = liveAsrPendingText) {
   liveAsrPrefetchTimer = null;
   liveAsrPendingText = '';
   const generation = trackLoadGeneration;
-
-  if (!needsCompleteLiveAsrSentence()) {
-    liveAsrCommittedText = finalText;
-    const renderSequence = ++liveAsrRenderSequence;
-    translateLiveAsrSentence(finalText, renderSequence, generation);
-    return;
-  }
-
-  if (!liveAsrSentenceBuffer) liveAsrSentenceStartedAt = Date.now();
-  liveAsrSentenceBuffer = mergeLiveAsrFragments(liveAsrSentenceBuffer, finalText);
-  const { completed, remainder } = splitCompletedCaptionSentences(
-    liveAsrSentenceBuffer,
-    currentSourceLang
-  );
-  const completeSentence = completed.map((sentence) => sentence.text).join(
-    isSpaceDelimitedLang(currentSourceLang) ? ' ' : ''
-  );
-
-  if (!currentSettings.showTrans) {
-    const renderSequence = ++liveAsrRenderSequence;
-    renderLiveAsrContent(liveAsrSentenceBuffer, '', false, renderSequence, generation);
-  }
-
-  clearTimeout(liveAsrSentenceFinalizeTimer);
-  if (completeSentence) {
-    liveAsrSentenceBuffer = remainder;
-    liveAsrSentenceStartedAt = remainder ? Date.now() : 0;
-    liveAsrCommittedText = completeSentence;
-    const renderSequence = ++liveAsrRenderSequence;
-    translateLiveAsrSentence(completeSentence, renderSequence, generation);
-    if (!remainder) return;
-  }
-
-  const emergencyCharLimit = isSpaceDelimitedLang(currentSourceLang)
-    ? ASR_EMERGENCY_MAX_CHARS
-    : ASR_EMERGENCY_MAX_COMPACT_CHARS;
-  const reachedEmergencyLimit = liveAsrSentenceBuffer.length >= emergencyCharLimit ||
-    Date.now() - liveAsrSentenceStartedAt >= ASR_EMERGENCY_MAX_DURATION_SECONDS * 1000;
-  if (reachedEmergencyLimit) {
-    finalizeSentenceAwareLiveAsr(generation);
-    return;
-  }
-
-  liveAsrSentenceFinalizeTimer = setTimeout(() => {
-    finalizeSentenceAwareLiveAsr(generation);
-  }, LIVE_ASR_SENTENCE_FINALIZE_MS);
+  liveAsrCommittedText = finalText;
+  const renderSequence = ++liveAsrRenderSequence;
+  translateLiveAsrSentence(finalText, renderSequence, generation);
 }
 
 function feedLiveAsrSnapshot(snapshot) {
   let nextText = normalizeCaptionText(snapshot);
   if (!nextText || nextText === liveAsrPendingText || nextText === liveAsrCommittedText) return;
 
-  const canRemoveCommittedPrefix = hasTerminalCaptionPunctuation(liveAsrCommittedText) ||
-    (needsCompleteLiveAsrSentence() && !liveAsrSentenceBuffer);
-  if (canRemoveCommittedPrefix && nextText.startsWith(liveAsrCommittedText)) {
+  if (hasTerminalCaptionPunctuation(liveAsrCommittedText) &&
+      nextText.startsWith(liveAsrCommittedText)) {
     nextText = normalizeCaptionText(nextText.slice(liveAsrCommittedText.length));
     if (!nextText) return;
   }
