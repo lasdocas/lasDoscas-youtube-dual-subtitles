@@ -1,3 +1,34 @@
+const TRANSLATION_CACHE_MAX_ENTRIES = 500;
+const TRANSLATION_CACHE_TTL_MS = 30 * 60 * 1000;
+const TRANSLATION_CACHE_MAX_SOURCE_LENGTH = 2000;
+const translationCache = new Map();
+
+function getCachedTranslation(cacheKey) {
+  if (!translationCache.has(cacheKey)) return null;
+  const entry = translationCache.get(cacheKey);
+  if (entry.expiresAt <= Date.now()) {
+    translationCache.delete(cacheKey);
+    return null;
+  }
+  translationCache.delete(cacheKey);
+  translationCache.set(cacheKey, entry);
+  return entry.translation;
+}
+
+function cacheTranslation(cacheKey, translation, sourceLength) {
+  if (!translation || sourceLength > TRANSLATION_CACHE_MAX_SOURCE_LENGTH) return;
+  translationCache.delete(cacheKey);
+  translationCache.set(cacheKey, {
+    translation,
+    expiresAt: Date.now() + TRANSLATION_CACHE_TTL_MS
+  });
+
+  if (translationCache.size > TRANSLATION_CACHE_MAX_ENTRIES) {
+    const oldestKey = translationCache.keys().next().value;
+    translationCache.delete(oldestKey);
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 1. 接收来自 popup.js 的关闭 iframe 指令 (需放在最上方)
   if (request.action === "close_popup_iframe") {
@@ -22,6 +53,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // 如果净化后文本为空，直接返回空翻译，无需发起网络请求
     if (!safeText) {
       sendResponse({ translation: "" });
+      return false;
+    }
+
+    const translationCacheKey = `${String(targetLang).toLowerCase()}\u0000${safeText}`;
+    const cachedTranslation = getCachedTranslation(translationCacheKey);
+    if (cachedTranslation !== null) {
+      sendResponse({ translation: cachedTranslation });
       return false;
     }
 
@@ -87,6 +125,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         if (data && data[0]) {
           const translatedText = data[0].map(item => item[0]).join('');
+          cacheTranslation(translationCacheKey, translatedText, safeText.length);
           sendResponse({ translation: translatedText });
         } else {
           // 如果返回的数据格式异常，同样降级处理

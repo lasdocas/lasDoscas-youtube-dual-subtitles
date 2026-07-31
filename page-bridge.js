@@ -6,6 +6,22 @@
 
   let lastVideoId = '';
   let lastActiveTrack = null;
+  let cachedMoviePlayer = null;
+  let cachedSubtitleButton = null;
+
+  function getMoviePlayerElement() {
+    if (!cachedMoviePlayer?.isConnected) {
+      cachedMoviePlayer = document.querySelector('#movie_player');
+    }
+    return cachedMoviePlayer;
+  }
+
+  function getSubtitleButtonElement() {
+    if (!cachedSubtitleButton?.isConnected) {
+      cachedSubtitleButton = document.querySelector('.ytp-subtitles-button');
+    }
+    return cachedSubtitleButton;
+  }
 
   function safeVssId(track) {
     return track?.vssId || track?.vss_id || '';
@@ -114,9 +130,9 @@
     return manualTrack || captionTracks[0];
   }
 
-  function getSnapshot() {
-    const moviePlayer = document.querySelector('#movie_player');
-    const pageVideoId = new URL(window.location.href).searchParams.get('v') || '';
+  function getSnapshot(pageUrl = new URL(window.location.href)) {
+    const moviePlayer = getMoviePlayerElement();
+    const pageVideoId = pageUrl.searchParams.get('v') || '';
     let playerResponse = null;
 
     try {
@@ -171,7 +187,7 @@
     // YouTube clears the active caption track when its native CC button is
     // switched off. Keep its identity for track selection, but report the
     // enabled state separately so the extension can ask the user to turn CC on.
-    const ccButton = document.querySelector('.ytp-subtitles-button');
+    const ccButton = getSubtitleButtonElement();
     const ariaPressed = ccButton?.getAttribute('aria-pressed');
     const captionsEnabled = ariaPressed === 'true' ||
       (ariaPressed !== 'false' && hasTrackIdentity(activeTrack));
@@ -221,8 +237,15 @@
   });
 
   let lastTrackKey = '';
-  setInterval(() => {
-    const snapshot = getSnapshot();
+  function pollTrackChanges() {
+    if (document.hidden) return;
+    const pageUrl = new URL(window.location.href);
+    if (pageUrl.pathname !== '/watch' || !pageUrl.searchParams.has('v')) {
+      lastTrackKey = '';
+      return;
+    }
+
+    const snapshot = getSnapshot(pageUrl);
     if (!snapshot.videoId) return;
 
     if (lastTrackKey && snapshot.trackKey !== lastTrackKey) {
@@ -233,5 +256,16 @@
       }, window.location.origin);
     }
     lastTrackKey = snapshot.trackKey;
-  }, 1000);
+  }
+
+  setInterval(pollTrackChanges, 1000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) pollTrackChanges();
+  });
+
+  window.addEventListener('yt-navigate-finish', () => {
+    cachedMoviePlayer = null;
+    cachedSubtitleButton = null;
+  });
 })();

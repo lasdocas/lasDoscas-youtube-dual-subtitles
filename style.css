@@ -72,6 +72,8 @@ body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
   padding: 0 !important; 
   line-height: 1.25 !important; 
   white-space: pre-wrap !important;
+  text-align: center !important;
+  unicode-bidi: plaintext !important;
   word-break: break-word !important;
   text-shadow: none !important;
   -webkit-text-stroke: 0px !important;

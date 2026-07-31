@@ -144,6 +144,9 @@ let settingsTabId = null;
 let preResetSettings = null; 
 let undoTimeout = null;      
 let countdownInterval = null;
+const RANGE_STORAGE_DEBOUNCE_MS = 150;
+let pendingStorageChanges = {};
+let storageDebounceTimer = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   updateCCAvailabilityUI(false);
@@ -215,7 +218,29 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 
 function saveSettings(changes) {
   Object.assign(tempSettings, changes);
+  Object.keys(changes).forEach((key) => delete pendingStorageChanges[key]);
+  if (!Object.keys(pendingStorageChanges).length) {
+    clearTimeout(storageDebounceTimer);
+    storageDebounceTimer = null;
+  }
   chrome.storage.local.set(changes);
+}
+
+function flushPendingSettings() {
+  clearTimeout(storageDebounceTimer);
+  storageDebounceTimer = null;
+  if (!Object.keys(pendingStorageChanges).length) return;
+
+  const changes = pendingStorageChanges;
+  pendingStorageChanges = {};
+  chrome.storage.local.set(changes);
+}
+
+function saveSettingsDebounced(changes) {
+  Object.assign(tempSettings, changes);
+  Object.assign(pendingStorageChanges, changes);
+  clearTimeout(storageDebounceTimer);
+  storageDebounceTimer = setTimeout(flushPendingSettings, RANGE_STORAGE_DEBOUNCE_MS);
 }
 
 function applySettingsToUI(settingsObj) {
@@ -332,8 +357,13 @@ function bindFormInputsEvents() {
           }
         }
 
-        saveSettings(changes);
+        if (el.type === 'range') saveSettingsDebounced(changes);
+        else saveSettings(changes);
       });
+
+      if (el.type === 'range') {
+        el.addEventListener('change', flushPendingSettings);
+      }
     }
   });
 }
@@ -381,7 +411,7 @@ function bindFooterEvents() {
     if (btnReset.classList.contains('undo-state')) {
       applySettingsToUI(preResetSettings);
       tempSettings = { ...preResetSettings }; 
-      chrome.storage.local.set(tempSettings);
+      saveSettings(tempSettings);
       
       clearTimeout(undoTimeout);
       clearInterval(countdownInterval);
@@ -399,7 +429,7 @@ function bindFooterEvents() {
     
     tempSettings = { ...pureDefaults };
     applySettingsToUI(pureDefaults); 
-    chrome.storage.local.set(tempSettings);
+    saveSettings(tempSettings);
 
     btnReset.classList.add('undo-state');
     let timeLeft = 3; 
@@ -427,6 +457,8 @@ function bindFooterEvents() {
   });
 
 }
+
+window.addEventListener('pagehide', flushPendingSettings);
 
 if (window.self !== window.top) {
   document.addEventListener('DOMContentLoaded', () => {

@@ -144,6 +144,11 @@ function isSpaceDelimitedLang(langCode) {
   return !['ja', 'zh', 'ko', 'th', 'lo', 'km', 'my'].includes(prefix);
 }
 
+function isRtlLanguage(langCode) {
+  const prefix = (langCode || '').toLowerCase().split('-')[0];
+  return ['ar', 'fa', 'he', 'iw', 'ur'].includes(prefix);
+}
+
 function getHintMessage(targetLang) {
   const lang = targetLang || 'en';
   const prefix = lang.toLowerCase().split('-')[0];
@@ -277,6 +282,7 @@ function getAutoTranslateSelectionMessage(targetLang) {
 function dieQuietly() {
   if (isOrphaned) return;
   isOrphaned = true; 
+  resetPlayerElementCache();
   
   if (observer) observer.disconnect();
   if (flexyObserver) flexyObserver.disconnect();
@@ -379,6 +385,8 @@ let isSyncingPluginState = false;
 
 let currentCaptionContainer = null;
 let containerMonitor = null;
+let cachedMoviePlayerElement = null;
+let cachedVideoElement = null;
 
 const TRACK_MODE = Object.freeze({
   UNKNOWN: 'UNKNOWN',
@@ -416,6 +424,7 @@ const DISPLAY_MAX_COMPACT_CHARS = 60;
 const DISPLAY_MAX_PARTS = 4;
 const DISPLAY_MIN_WORDS_PER_PART = 3;
 const DISPLAY_MIN_COMPACT_CHARS_PER_PART = 4;
+const DISPLAY_MIN_PART_DURATION_SECONDS = 1.5;
 const AUTO_FILE_RENDER_INTERVAL_MS = 50;
 const FILE_RENDER_INTERVAL_MS = 50;
 const COPY_FEEDBACK_DURATION_MS = 500;
@@ -465,6 +474,13 @@ let currentSettings = {
   uiLang: getDefaultUiLang()
 };
 
+const LAYOUT_SETTING_KEYS = new Set([
+  'showSrc', 'showTrans', 'font',
+  'srcSize', 'fsSrcSize', 'srcColor', 'srcNormalBold', 'srcFsBold',
+  'transSize', 'fsTransSize', 'transColor', 'transNormalBold', 'transFsBold',
+  'fsBgStyle', 'fsBgOpacity'
+]);
+
 function loadAndApplySettings() {
   if (!checkContext()) return;
   chrome.storage.local.get(Object.keys(currentSettings), (settings) => {
@@ -477,10 +493,20 @@ function loadAndApplySettings() {
 try {
   chrome.storage.onChanged.addListener((changes) => {
     if (!checkContext()) return;
-    for (let key in changes) {
+    const changedKeys = Object.keys(changes);
+    for (const key of changedKeys) {
       currentSettings[key] = changes[key].newValue;
     }
-    syncPluginState();
+
+    const enabledChanged = changedKeys.includes('enabled');
+    const layoutChanged = changedKeys.some((key) => LAYOUT_SETTING_KEYS.has(key));
+    if (enabledChanged) {
+      syncPluginState();
+    } else if (layoutChanged) {
+      triggerLayoutUpdate();
+    }
+    if (changedKeys.includes('uiLang')) updateCopyButtonLanguage();
+
     if (changes.showTrans && trackMode === TRACK_MODE.FILE_READY) {
       pendingFileCueIndex = -1;
       renderedFileCueIndex = -1;
@@ -578,7 +604,7 @@ function hideLoadingMessage() {
 
 function getLayoutMode() {
   const watchFlexy = document.querySelector('ytd-watch-flexy');
-  const moviePlayer = document.querySelector('#movie_player');
+  const moviePlayer = getMoviePlayerElement();
   const isFs = document.fullscreenElement != null || 
                (watchFlexy && watchFlexy.hasAttribute('fullscreen')) || 
                (moviePlayer && moviePlayer.classList.contains('ytp-fullscreen'));
@@ -609,6 +635,33 @@ function cachePlayerSnapshotMetadata(snapshot) {
 
 function resetCurrentVideoMetadata() {
   currentVideoMetadata = { videoId: getCurrentVideoId(), title: '', publishDate: '' };
+}
+
+function resetPlayerElementCache() {
+  cachedMoviePlayerElement = null;
+  cachedVideoElement = null;
+}
+
+function getMoviePlayerElement() {
+  if (!cachedMoviePlayerElement?.isConnected) {
+    cachedMoviePlayerElement = document.querySelector('#movie_player');
+    cachedVideoElement = null;
+  }
+  return cachedMoviePlayerElement;
+}
+
+function getPlayerVideoElement() {
+  const moviePlayer = getMoviePlayerElement();
+  if (!moviePlayer) return null;
+
+  const cachedVideoIsCurrent = cachedVideoElement?.isConnected &&
+    cachedVideoElement.closest('#movie_player') === moviePlayer;
+  if (!cachedVideoIsCurrent) {
+    cachedVideoElement =
+      moviePlayer.querySelector('video.html5-main-video') ||
+      moviePlayer.querySelector('video');
+  }
+  return cachedVideoElement;
 }
 
 function getVisibleVideoTitle() {
@@ -670,7 +723,7 @@ function formatPlaybackTimestamp(seconds) {
 }
 
 function buildTimestampedSubtitle(sourceSubtitle) {
-  const video = document.querySelector('video');
+  const video = getPlayerVideoElement();
   return `[${formatPlaybackTimestamp(video?.currentTime)}]  ${sourceSubtitle}`;
 }
 
@@ -943,7 +996,7 @@ function ensureSubtitleContainer() {
   if (isOrphaned || !currentSettings.enabled || !isCCAvailable) return null;
   
   const watchFlexy = document.querySelector('ytd-watch-flexy');
-  const moviePlayer = document.querySelector('#movie_player');
+  const moviePlayer = getMoviePlayerElement();
   if (!watchFlexy || !moviePlayer) return null;
 
   const layoutMode = getLayoutMode();
@@ -957,8 +1010,8 @@ function ensureSubtitleContainer() {
     wrapper.setAttribute('aria-atomic', 'true');
 
     wrapper.innerHTML = `
-      <div class="custom-source-text">&nbsp;</div>
-      <div class="custom-translated-text">&nbsp;</div>
+      <div class="custom-source-text" dir="auto">&nbsp;</div>
+      <div class="custom-translated-text" dir="auto">&nbsp;</div>
       <button type="button" class="lasdoscas-copy-button" data-copy-mode="subtitle" tabindex="-1">
         <span class="lasdoscas-copy-icon" aria-hidden="true">
           <img class="lasdoscas-copy-main-icon" alt="" src="${chrome.runtime.getURL('copy48.svg')}">
@@ -990,6 +1043,7 @@ function ensureSubtitleContainer() {
     }
   }
 
+  wrapper.setAttribute('dir', isRtlLanguage(currentSourceLang) ? 'rtl' : 'ltr');
   wrapper.setAttribute('data-layout-mode', layoutMode);
   updateCopyButtonLanguage(wrapper);
   updateCopyAvailability(wrapper);
@@ -1036,7 +1090,7 @@ function initLayoutObserver() {
 
 function updateWrapperDimensions() {
   const wrapper = document.querySelector('.custom-subtitle-wrapper');
-  const actualPlayer = document.querySelector('#movie_player');
+  const actualPlayer = getMoviePlayerElement();
   if (!wrapper || !actualPlayer || isOrphaned) return;
 
   const layoutMode = getLayoutMode(); 
@@ -1061,11 +1115,18 @@ function updateWrapperDimensions() {
     if (currentSettings.fsBgStyle === 'fit' || currentSettings.fsBgStyle === 'none') {
       wrapper.style.setProperty('width', 'fit-content', 'important');
       wrapper.style.setProperty('max-width', '85%', 'important');
+      wrapper.style.removeProperty('inset-inline-start');
+      wrapper.style.setProperty('left', '0', 'important');
+      wrapper.style.setProperty('right', '0', 'important');
+      wrapper.style.setProperty('margin', '0 auto', 'important');
     } else if (targetWidth > 200) {
       wrapper.style.setProperty('width', `${targetWidth * 0.8}px`, 'important');
       wrapper.style.setProperty('max-width', '100%', 'important');
+      wrapper.style.removeProperty('inset-inline-start');
+      wrapper.style.setProperty('left', '0', 'important');
+      wrapper.style.setProperty('right', '0', 'important');
+      wrapper.style.setProperty('margin', '0 auto', 'important');
     }
-    wrapper.style.setProperty('margin', '0 auto', 'important');
     wrapper.style.setProperty('border-radius', '8px', 'important');
   } else {
     wrapper.style.setProperty('width', '100%', 'important');
@@ -1078,7 +1139,7 @@ function updateWrapperDimensions() {
 function initPlayerResizeObserver() {
   if (playerResizeObserver) playerResizeObserver.disconnect();
 
-  const playerTarget = document.querySelector('#movie_player') || document.querySelector('ytd-watch-flexy');
+  const playerTarget = getMoviePlayerElement() || document.querySelector('ytd-watch-flexy');
   if (!playerTarget) {
     if (!isOrphaned) setTimeout(initPlayerResizeObserver, 500);
     return;
@@ -1093,7 +1154,7 @@ function initPlayerResizeObserver() {
   });
 
   playerResizeObserver.observe(playerTarget);
-  const moviePlayer = document.querySelector('#movie_player');
+  const moviePlayer = getMoviePlayerElement();
   if (moviePlayer && moviePlayer !== playerTarget) {
     playerResizeObserver.observe(moviePlayer);
   }
@@ -1304,7 +1365,7 @@ function initCCButtonObserver() {
   // navigation event. Keep a lightweight reconciliation pass so the plugin
   // switch is reattached after those player state changes as well.
   playerControlMonitor = setInterval(() => {
-    if (!checkContext() || isOrphaned || !isYouTubeWatchPage()) return;
+    if (document.hidden || !checkContext() || isOrphaned || !isYouTubeWatchPage()) return;
     if (!ensurePlayerPluginControl()) updateCCAvailability();
     const ccEnabled = getYouTubeCCEnabledFromButton();
     if (ccEnabled !== null) setYouTubeCCEnabled(ccEnabled, 'player control');
@@ -1389,6 +1450,7 @@ function startContainerMonitor() {
       clearInterval(containerMonitor);
       return;
     }
+    if (document.hidden) return;
     if (!currentSettings.enabled) return;
     
     const actualContainer = document.querySelector('.ytp-caption-window-container');
@@ -1449,6 +1511,18 @@ const CAPTION_PERIOD_ABBREVIATIONS = new Set([
   'abb', 'usw', 'u.s', 'mme', 'mlle', 'p.ex', 'sra', 'srta', 'dra',
   'ud', 'uds', 'p.ej'
 ]);
+const sentenceSegmenters = new Map();
+
+function getSentenceSegmenter(languageCode) {
+  const locale = languageCode || 'en';
+  const cacheKey = locale.toLowerCase();
+  let segmenter = sentenceSegmenters.get(cacheKey);
+  if (!segmenter) {
+    segmenter = new Intl.Segmenter(locale, { granularity: 'sentence' });
+    sentenceSegmenters.set(cacheKey, segmenter);
+  }
+  return segmenter;
+}
 
 function isLikelyFalsePeriodBoundary(sentenceText, fullText, boundaryEndIndex) {
   const sentence = normalizeCaptionText(sentenceText);
@@ -1476,7 +1550,7 @@ function splitCompletedCaptionSentences(text, languageCode = currentSourceLang) 
   let segments = [];
   try {
     if (typeof Intl?.Segmenter === 'function') {
-      const segmenter = new Intl.Segmenter(languageCode || 'en', { granularity: 'sentence' });
+      const segmenter = getSentenceSegmenter(languageCode);
       segments = Array.from(segmenter.segment(normalized), (entry) => ({
         text: entry.segment,
         startIndex: entry.index,
@@ -1631,20 +1705,20 @@ function splitCaptionIntoDisplayParts(text, languageCode, requestedPartCount, bo
   return parts.length ? parts : [normalized];
 }
 
-function buildBilingualDisplayParts(sourceText, translation) {
+function buildBilingualDisplayParts(sourceText, translation, cueDuration = Infinity) {
   const sourcePartCount = getCaptionDisplayPartCount(sourceText, currentSourceLang);
-  const translationPartCount = translation
-    ? getCaptionDisplayPartCount(translation, currentSettings.lang)
-    : 1;
   const sourcePartCapacity = getCaptionDisplayPartCapacity(sourceText, currentSourceLang);
   const translationPartCapacity = translation
     ? getCaptionDisplayPartCapacity(translation, currentSettings.lang)
     : sourcePartCapacity;
+  const durationPartCapacity = Number.isFinite(cueDuration)
+    ? Math.max(1, Math.floor(cueDuration / DISPLAY_MIN_PART_DURATION_SECONDS))
+    : DISPLAY_MAX_PARTS;
   const partCount = Math.min(
     DISPLAY_MAX_PARTS,
-    Math.max(sourcePartCount, translationPartCount),
+    sourcePartCount,
     sourcePartCapacity,
-    translationPartCapacity
+    durationPartCapacity
   );
   const sourceStrongRatios = getStrongCaptionBoundaryRatios(sourceText, currentSourceLang);
   const translationStrongRatios = translation
@@ -1655,7 +1729,8 @@ function buildBilingualDisplayParts(sourceText, translation) {
   const sourceBoundaryRatios = sourceStrongRatios.length === partCount - 1
     ? sourceStrongRatios
     : [];
-  const translationBoundaryRatios = translationStrongRatios.length === partCount - 1
+  const translationRequestedPartCount = Math.min(partCount, translationPartCapacity);
+  const translationBoundaryRatios = translationStrongRatios.length === translationRequestedPartCount - 1
     ? translationStrongRatios
     : [];
   const sourceParts = splitCaptionIntoDisplayParts(
@@ -1664,13 +1739,22 @@ function buildBilingualDisplayParts(sourceText, translation) {
     partCount,
     sourceBoundaryRatios
   );
-  const translationParts = translation
+  const rawTranslationParts = translation
     ? splitCaptionIntoDisplayParts(
         translation,
         currentSettings.lang,
-        partCount,
+        translationRequestedPartCount,
         translationBoundaryRatios
       )
+    : [];
+  const translationParts = rawTranslationParts.length
+    ? Array.from({ length: partCount }, (_, index) => {
+        const mappedIndex = Math.min(
+          rawTranslationParts.length - 1,
+          Math.floor(index * rawTranslationParts.length / partCount)
+        );
+        return rawTranslationParts[mappedIndex] || '';
+      })
     : Array(partCount).fill('');
 
   return Array.from({ length: partCount }, (_, index) => ({
@@ -1682,16 +1766,29 @@ function buildBilingualDisplayParts(sourceText, translation) {
 function getDisplayPartIndex(cue, displayParts, playbackTime) {
   if (displayParts.length <= 1 || cue.end <= cue.start) return 0;
   const progress = Math.max(0, Math.min(1, (playbackTime - cue.start) / (cue.end - cue.start)));
+  const cueDuration = cue.end - cue.start;
+  const elapsed = progress * cueDuration;
   const totalSourceLength = displayParts.reduce((total, part) => total + part.source.length, 0);
   if (!totalSourceLength) return Math.min(displayParts.length - 1, Math.floor(progress * displayParts.length));
 
-  const targetLength = totalSourceLength * progress;
   let consumedLength = 0;
-  for (let index = 0; index < displayParts.length; index += 1) {
+  let previousBoundaryTime = 0;
+  for (let index = 0; index < displayParts.length - 1; index += 1) {
     consumedLength += displayParts[index].source.length;
-    if (targetLength < consumedLength || index === displayParts.length - 1) return index;
+    const proportionalTime = cueDuration * consumedLength / totalSourceLength;
+    const remainingParts = displayParts.length - index - 1;
+    const earliestBoundary = previousBoundaryTime + DISPLAY_MIN_PART_DURATION_SECONDS;
+    const latestBoundary = cueDuration - remainingParts * DISPLAY_MIN_PART_DURATION_SECONDS;
+    const boundaryTime = Math.min(latestBoundary, Math.max(earliestBoundary, proportionalTime));
+    if (elapsed < boundaryTime) return index;
+    previousBoundaryTime = boundaryTime;
   }
   return displayParts.length - 1;
+}
+
+function getStableDisplayPart(displayParts, partIndex) {
+  const currentPart = displayParts[partIndex] || { source: '', translation: '' };
+  return currentPart;
 }
 
 function getRollingAsrDelta(previousText, nextText, useSpace) {
@@ -2407,27 +2504,28 @@ async function ensureCueTranslation(sourceText, generation = trackLoadGeneration
   return request;
 }
 
-function displayFileCue(cueIndex, translation = '', playbackTime = null) {
+function displayFileCue(cueIndex, translation = '', playbackTime = null, options = {}) {
   const cue = preloadedSentencesList[cueIndex];
   if (!cue || cueIndex !== currentCueIndex || trackMode !== TRACK_MODE.FILE_READY) return;
 
   const cacheKey = `${currentSourceLang}|${currentSettings.lang}|${translation}`;
-  if (cue.displayPartsCacheKey !== cacheKey) {
+  const displayPartsChanged = cue.displayPartsCacheKey !== cacheKey;
+  if (displayPartsChanged) {
     cue.displayPartsCacheKey = cacheKey;
-    cue.displayParts = buildBilingualDisplayParts(cue.text, translation);
+    cue.displayParts = buildBilingualDisplayParts(cue.text, translation, cue.end - cue.start);
   }
   const effectivePlaybackTime = Number.isFinite(playbackTime)
     ? playbackTime
-    : document.querySelector('video')?.currentTime ?? cue.start;
+    : getPlayerVideoElement()?.currentTime ?? cue.start;
   const partIndex = getDisplayPartIndex(cue, cue.displayParts, effectivePlaybackTime);
-  if (cueIndex === renderedFileCueIndex && partIndex === renderedFileCuePartIndex) {
-    pendingFileCueIndex = -1;
+  if (!displayPartsChanged && cueIndex === renderedFileCueIndex && partIndex === renderedFileCuePartIndex) {
+    if (!options.keepPending) pendingFileCueIndex = -1;
     return;
   }
-  const displayPart = cue.displayParts[partIndex] || { source: cue.text, translation };
+  const displayPart = getStableDisplayPart(cue.displayParts, partIndex);
   renderedFileCueIndex = cueIndex;
   renderedFileCuePartIndex = partIndex;
-  pendingFileCueIndex = -1;
+  if (!options.keepPending) pendingFileCueIndex = -1;
   hideLoadingMessage();
   lastMatchedSource = cue.text;
   lastText = displayPart.source;
@@ -2436,7 +2534,7 @@ function displayFileCue(cueIndex, translation = '', playbackTime = null) {
 
 function renderFileCue() {
   if (trackMode !== TRACK_MODE.FILE_READY || isOrphaned || !currentSettings.enabled) return;
-  const video = document.querySelector('video');
+  const video = getPlayerVideoElement();
   if (!video) return;
 
   const playbackTime = video.currentTime;
@@ -2467,6 +2565,7 @@ function renderFileCue() {
   const cue = preloadedSentencesList[nextCueIndex];
   const translation = preloadedTranslations.get(cue.text);
   if (nextCueIndex === renderedFileCueIndex) {
+    if (pendingFileCueIndex === nextCueIndex && !translation) return;
     displayFileCue(nextCueIndex, translation || '', playbackTime);
     return;
   }
@@ -2485,12 +2584,7 @@ function renderFileCue() {
     return;
   }
 
-  if (!isAutoGenerated) {
-    // Preserve the existing manually authored caption behavior: both rows are
-    // cleared until the exact translated cue is ready. During initial loading,
-    // keep the status container intact so it can be replaced in one paint.
-    if (!loadingMessageVisible) clearSubtitleContent();
-  }
+  displayFileCue(nextCueIndex, '', playbackTime, { keepPending: true });
 
   ensureCueTranslation(cue.text).then(() => {
     if (nextCueIndex !== currentCueIndex || pendingFileCueIndex !== nextCueIndex) return;
@@ -2498,7 +2592,7 @@ function renderFileCue() {
     if (readyTranslation) {
       clearTimeout(fileCueTranslationRetryTimer);
       fileCueTranslationRetryTimer = null;
-      displayFileCue(nextCueIndex, readyTranslation, document.querySelector('video')?.currentTime);
+      displayFileCue(nextCueIndex, readyTranslation, getPlayerVideoElement()?.currentTime);
       return;
     }
 
@@ -2611,7 +2705,7 @@ function refreshAutoTranslationWindow(playhead, force = false) {
 
 async function warmAutoFileTranslations(generation) {
   if (!isAutoGenerated || !currentSettings.showTrans || generation !== trackLoadGeneration) return;
-  const video = document.querySelector('video');
+  const video = getPlayerVideoElement();
   const playhead = video?.currentTime || 0;
   const refillPromise = refreshAutoTranslationWindow(playhead, true);
 
@@ -2623,7 +2717,7 @@ async function warmAutoFileTranslations(generation) {
 }
 
 async function preloadTranslations(generation) {
-  const video = document.querySelector('video');
+  const video = getPlayerVideoElement();
   const playhead = video?.currentTime || 0;
   const nearestIndex = Math.max(0, findNextCueIndexAtTime(playhead));
   const priorityCues = [
@@ -2763,7 +2857,7 @@ async function preloadFullTrack(generation, attempt) {
     trackMode = TRACK_MODE.FILE_READY;
 
     console.log(`lasDoscas: 已加载 ${cues.length} 条字幕，启用独立时间轴双语渲染。`);
-    const video = document.querySelector('video');
+    const video = getPlayerVideoElement();
     const initialCueIndex = findNextCueIndexAtTime(video?.currentTime || 0);
     if (initialCueIndex >= 0 && !preloadedTranslations.has(cues[initialCueIndex].text)) {
       ensureCueTranslation(cues[initialCueIndex].text, generation);
@@ -2797,6 +2891,7 @@ setTimeout(() => {
 
 window.addEventListener('yt-navigate-finish', () => {
   if (!checkContext() || isOrphaned) return;
+  resetPlayerElementCache();
   currentCaptionContainer = null;
   resetCurrentVideoMetadata();
   resetCCAvailability();
@@ -2815,7 +2910,7 @@ loadAndApplySettings();
 function toggleFullscreenSettings() {
   if (isOrphaned) return;
 
-  const moviePlayer = document.querySelector('#movie_player');
+  const moviePlayer = getMoviePlayerElement();
   if (!moviePlayer) return;
 
   if (fullscreenSettingsIframe) {
@@ -2860,7 +2955,7 @@ window.addEventListener('message', (event) => {
   
   if (event.data && event.data.action === "lasdoscas_resize") {
     if (fullscreenSettingsIframe) {
-      const moviePlayer = document.querySelector('#movie_player');
+      const moviePlayer = getMoviePlayerElement();
       let maxAllowedHeight = window.innerHeight * 0.9; 
       
       if (moviePlayer) {
