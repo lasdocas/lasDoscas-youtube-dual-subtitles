@@ -91,12 +91,35 @@
       activeTrack.is_translated === true ||
       activeTrack.kind === 'translate';
 
+    // YouTube can leave translationLanguage/tlang on the player option for a
+    // moment after switching back to an authored track. If the active and
+    // selected tracks agree on language, treat that stale metadata as source
+    // subtitles instead of parking the extension in the auto-translate state.
+    const selectedTrackIsManual = Boolean(
+      selectedTrack &&
+      selectedTrack.kind !== 'asr' &&
+      !safeVssId(selectedTrack).startsWith('a.')
+    );
+    const staleTranslationMetadata = Boolean(
+      selectedTrack &&
+      activeTrack.languageCode &&
+      selectedTrack.languageCode &&
+      activeTrack.languageCode === selectedTrack.languageCode &&
+      selectedTrackIsManual &&
+      !explicitlyTranslated &&
+      !languageChangedOnSameTrack
+    );
+
     if (!languageCode && languageChangedOnSameTrack) {
       languageCode = activeTrack.languageCode;
     }
 
     return {
-      isAutoTranslated: Boolean(languageCode || explicitlyTranslated || languageChangedOnSameTrack),
+      isAutoTranslated: Boolean(
+        explicitlyTranslated ||
+        languageChangedOnSameTrack ||
+        (languageCode && !staleTranslationMetadata)
+      ),
       languageCode
     };
   }

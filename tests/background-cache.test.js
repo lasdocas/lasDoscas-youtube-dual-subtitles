@@ -13,6 +13,15 @@ function createBackgroundHarness() {
   let messageListener = null;
   let now = 1_000_000;
   let fetchCount = 0;
+  let sessionStorage = {};
+  let localStorage = {};
+  let fetchHandler = async () => ({
+    headers: { get: () => 'application/json' },
+    json: async () => [[['translated']]],
+    text: async () => '',
+    ok: true,
+    status: 200
+  });
 
   class FakeDate extends Date {
     static now() {
@@ -30,22 +39,39 @@ function createBackgroundHarness() {
           }
         }
       },
-      tabs: { query() {}, sendMessage() {} }
+      tabs: { query() {}, sendMessage() {} },
+      storage: {
+        local: {
+          get(keys, callback) {
+            callback(Object.fromEntries(keys.map((key) => [key, localStorage[key]])));
+          },
+          set(value, callback) {
+            localStorage = { ...localStorage, ...value };
+            callback?.();
+          }
+        },
+        session: {
+          get(key, callback) {
+            callback({ [key]: sessionStorage[key] });
+          },
+          set(value, callback) {
+            sessionStorage = { ...sessionStorage, ...value };
+            callback?.();
+          }
+        }
+      }
     },
     console,
     Date: FakeDate,
     encodeURIComponent,
-    fetch: async () => {
+    fetch: async (...args) => {
       fetchCount += 1;
-      return {
-        headers: { get: () => 'application/json' },
-        json: async () => [[['translated']]],
-        ok: true,
-        status: 200
-      };
+      return fetchHandler(...args);
     },
     Map,
-    setTimeout
+    setTimeout,
+    clearTimeout,
+    AbortController
   };
   vm.createContext(context);
   vm.runInContext(
@@ -68,6 +94,15 @@ function createBackgroundHarness() {
     },
     setNow(value) {
       now = value;
+    },
+    setFetchHandler(handler) {
+      fetchHandler = handler;
+    },
+    setSessionStorage(value) {
+      sessionStorage = { ...value };
+    },
+    setLocalStorage(value) {
+      localStorage = { ...value };
     }
   };
 }
@@ -116,4 +151,125 @@ test('LRU eviction keeps recently read entries', () => {
   assert.equal(harness.cacheApi.translationCache.size, 500);
   assert.equal(harness.cacheApi.getCachedTranslation('key-1'), null);
   assert.equal(harness.cacheApi.getCachedTranslation('key-0'), 'value-0');
+});
+
+test('Gemini translation uses the session key and reports its source', async () => {
+  const harness = createBackgroundHarness();
+  harness.setSessionStorage({ aiGeminiApiKey: 'session-key' });
+  harness.setFetchHandler(async (url, options) => {
+    assert.match(url, /gemini-3\.5-flash:generateContent$/);
+    assert.equal(options.headers['x-goog-api-key'], 'session-key');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: 'Hola' }] } }]
+      })
+    };
+  });
+
+  const response = await harness.send({
+    action: 'translate_ai',
+    text: 'Hello',
+    sourceLang: 'en',
+    lang: 'es'
+  });
+
+  assert.equal(response.translation, 'Hola');
+  assert.equal(response.source, 'gemini');
+});
+
+test('concurrent identical Gemini translations share one request', async () => {
+  const harness = createBackgroundHarness();
+  harness.setSessionStorage({ aiGeminiApiKey: 'session-key' });
+  let releaseRequest;
+  harness.setFetchHandler((url, options) => new Promise((resolve) => {
+    releaseRequest = () => resolve({
+      ok: true,
+      status: 200,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'Hola' }] } }] })
+    });
+  }));
+
+  const first = harness.send({ action: 'translate_ai', text: 'Hello', sourceLang: 'en', lang: 'es' });
+  const second = harness.send({ action: 'translate_ai', text: 'Hello', sourceLang: 'en', lang: 'es' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(harness.getFetchCount(), 1);
+  releaseRequest();
+  assert.equal((await first).translation, 'Hola');
+  assert.equal((await second).translation, 'Hola');
+
+  const cached = await harness.send({
+    action: 'translate_ai',
+    text: 'Hello',
+    sourceLang: 'en',
+    lang: 'es'
+  });
+  assert.equal(cached.translation, 'Hola');
+  assert.equal(harness.getFetchCount(), 1);
+});
+
+test('Gemini 429 enters cooldown without a cross-model fallback burst', async () => {
+  const harness = createBackgroundHarness();
+  harness.setSessionStorage({ aiGeminiApiKey: 'session-key' });
+  harness.setFetchHandler(async () => ({
+    ok: false,
+    status: 429,
+    headers: { get: () => null },
+    text: async () => '{"error":{"status":"RESOURCE_EXHAUSTED"}}'
+  }));
+
+  const first = await harness.send({ action: 'translate_ai', text: 'First', sourceLang: 'en', lang: 'es' });
+  const second = await harness.send({ action: 'translate_ai', text: 'Second', sourceLang: 'en', lang: 'es' });
+  assert.equal(first.error, 'gemini_http_429');
+  assert.equal(second.error, 'gemini_http_429');
+  assert.equal(harness.getFetchCount(), 1);
+});
+
+test('Gemini quota exhaustion does not continue with the next model', async () => {
+  const harness = createBackgroundHarness();
+  harness.setSessionStorage({ aiGeminiApiKey: 'session-key' });
+  const attemptedModels = [];
+  harness.setFetchHandler(async (url) => {
+    const model = String(url).match(/models\/([^:]+)/)?.[1];
+    attemptedModels.push(model);
+    if (attemptedModels.length === 1) {
+      return {
+        ok: false,
+        status: 429,
+        headers: { get: () => null },
+        text: async () => '{"error":{"status":"RESOURCE_EXHAUSTED"}}'
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'Hola Lite' }] } }] })
+    };
+  });
+
+  const response = await harness.send({
+    action: 'translate_ai',
+    text: 'Hello fallback',
+    sourceLang: 'en',
+    lang: 'es'
+  });
+
+  assert.equal(response.translation, '');
+  assert.deepEqual(attemptedModels, ['gemini-3.5-flash']);
+});
+
+test('Gemini key test does not consume the whole fallback chain', async () => {
+  const harness = createBackgroundHarness();
+  harness.setFetchHandler(async (url) => ({
+    ok: false,
+    status: 429,
+    headers: { get: () => null },
+    text: async () => '{"error":{"status":"RESOURCE_EXHAUSTED"}}'
+  }));
+
+  const response = await harness.send({ action: 'test_gemini_key', apiKey: 'test-key' });
+  assert.equal(response.ok, false);
+  assert.equal(response.code, 'rate_limited');
+  assert.equal(harness.getFetchCount(), 1);
 });

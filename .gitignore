@@ -15,6 +15,7 @@ content_older.js
 *.ntvs*
 *.njsproj
 temp/
+previous_version/
 
 #======================================================================
 # Build artifacts / Extension packages

@@ -2,140 +2,27 @@ let isOrphaned = false;
 let fullscreenSettingsIframe = null; 
 
 // ==========================================
-// 🚀 源语言状态与多语言提示字典
+// 🚀 源语言状态与本地化资源
 // ==========================================
 let currentSourceLang = 'en';
 let loadingMessageVisible = false;
-const loadingMessageDict = Object.freeze({
-  'zh-cn': 'lasDoscas 正在为您加载双语字幕',
-  'zh-tw': 'lasDoscas 正在為您載入雙語字幕',
-  zh: 'lasDoscas 正在为您加载双语字幕',
-  en: 'lasDoscas is loading bilingual subtitles',
-  es: 'lasDoscas está cargando subtítulos bilingües',
-  fr: 'lasDoscas charge vos sous-titres bilingues',
-  'fr-ca': 'lasDoscas charge vos sous-titres bilingues',
-  de: 'lasDoscas lädt zweisprachige Untertitel',
-  ja: 'lasDoscas が二言語字幕を読み込んでいます',
-  ko: 'lasDoscas가 이중 언어 자막을 불러오는 중입니다',
-  pt: 'lasDoscas está carregando legendas bilíngues',
-  id: 'lasDoscas sedang memuat subtitel dwibahasa',
-  ms: 'lasDoscas sedang memuatkan sari kata dwibahasa',
-  ru: 'lasDoscas загружает двуязычные субтитры',
-  ar: 'lasDoscas يقوم بتحميل الترجمة الثنائية',
-  hi: 'lasDoscas द्विभाषी उपशीर्षक लोड कर रहा है',
-  ta: 'lasDoscas இருமொழி வசனங்களை ஏற்றுகிறது',
-  th: 'lasDoscas กำลังโหลดคำบรรยายสองภาษา',
-  vi: 'lasDoscas đang tải phụ đề song ngữ',
-  tr: 'lasDoscas iki dilli altyazıları yüklüyor',
-  pl: 'lasDoscas ładuje napisy dwujęzyczne',
-  nl: 'lasDoscas laadt dubbele ondertitels',
-  sv: 'lasDoscas läser in tvåspråkiga undertexter',
-  da: 'lasDoscas indlæser tosprogede undertekster',
-  no: 'lasDoscas laster inn tospråklige undertekster',
-  fi: 'lasDoscas lataa kaksikielisiä tekstityksiä',
-  it: 'lasDoscas sta caricando i sottotitoli bilingue',
-  ro: 'lasDoscas încarcă subtitrări bilingve',
-  hu: 'lasDoscas kétnyelvű feliratokat tölt be',
-  cs: 'lasDoscas načítá dvojjazyčné titulky',
-  hr: 'lasDoscas učitava dvojezične titlove',
-  el: 'lasDoscas φορτώνει δίγλωσσους υπότιτλους',
-  iw: 'lasDoscas טוען כתוביות דו-לשוניות',
-  tl: 'Nilo-load ng lasDoscas ang dalawang-wikang subtitle',
-  uk: 'lasDoscas завантажує двомовні субтитри',
-  eu: 'lasDoscas elebitza-azpitituluak kargatzen ari da',
-  ca: 'lasDoscas està carregant subtítols bilingües',
-  gl: 'lasDoscas está cargando subtítulos bilingües',
-  is: 'lasDoscas hleður tvítyngdum textum',
-  sw: 'lasDoscas inapakia manukuu ya lugha mbili',
-  et: 'lasDoscas laadib kakskeelseid subtiitreid',
-  lv: 'lasDoscas ielādē divvalodu subtitrus',
-  lt: 'lasDoscas įkelia dvikalbius subtitrus',
-  sk: 'lasDoscas načítava dvojjazyčné titulky',
-  sl: 'lasDoscas nalaga dvojezične podnapise',
-  bg: 'lasDoscas зарежда двуезични субтитри',
-  sr: 'lasDoscas učitava dvojezične titlove',
-  ur: 'lasDoscas دو لسانی سب ٹائٹلز لوڈ کر رہا ہے',
-  fa: 'lasDoscas زیرنویس دوزبانه را بارگذاری می‌کند',
-  mr: 'lasDoscas द्विभाषिक उपशीर्षके लोड करत आहे',
-  bn: 'lasDoscas দ্বিভাষিক সাবটাইটেল লোড করছে',
-  gu: 'lasDoscas દ્વિભાષી સબટાઇટલ લોડ કરી રહ્યું છે',
-  te: 'lasDoscas ద్విభాషా ఉపశీర్షికలను లోడ్ చేస్తోంది',
-  kn: 'lasDoscas ದ್ವಿಭಾಷಾ ಉಪಶೀರ್ಷಿಕೆಗಳನ್ನು ಲೋಡ್ ಮಾಡುತ್ತಿದೆ',
-  ml: 'lasDoscas ദ്വിഭാഷാ സബ്‌ടൈറ്റിലുകൾ ലോഡ് ചെയ്യുന്നു',
-  am: 'lasDoscas ባለሁለት ቋንቋ ንዑስ ርዕሶችን በመጫን ላይ ነው'
-});
-
-const youtubeCaptionsDisabledMessageDict = Object.freeze({
-  'zh-cn': '请开启 YouTube 字幕，以显示双语字幕',
-  'zh-tw': '請開啟 YouTube 字幕，以顯示雙語字幕',
-  zh: '请开启 YouTube 字幕，以显示双语字幕',
-  en: 'Turn on YouTube captions to display bilingual subtitles',
-  es: 'Activa los subtítulos de YouTube para mostrar subtítulos bilingües',
-  fr: 'Activez les sous-titres YouTube pour afficher des sous-titres bilingues',
-  'fr-ca': 'Activez les sous-titres YouTube pour afficher des sous-titres bilingues',
-  de: 'Aktivieren Sie die YouTube-Untertitel, um zweisprachige Untertitel anzuzeigen',
-  ja: '二言語字幕を表示するには、YouTube の字幕をオンにしてください',
-  ko: '이중 언어 자막을 표시하려면 YouTube 자막을 켜세요',
-  pt: 'Ative as legendas do YouTube para exibir legendas bilíngues',
-  id: 'Aktifkan subtitel YouTube untuk menampilkan subtitel dwibahasa',
-  ms: 'Hidupkan sari kata YouTube untuk memaparkan sari kata dwibahasa',
-  ru: 'Включите субтитры YouTube, чтобы отображать двуязычные субтитры',
-  ar: 'فعّل الترجمة المصاحبة في YouTube لعرض ترجمة ثنائية اللغة',
-  hi: 'द्विभाषी उपशीर्षक दिखाने के लिए YouTube उपशीर्षक चालू करें',
-  ta: 'இருமொழி வசனங்களைக் காட்ட YouTube வசனங்களை இயக்கவும்',
-  th: 'เปิดคำบรรยาย YouTube เพื่อแสดงคำบรรยายสองภาษา',
-  vi: 'Bật phụ đề YouTube để hiển thị phụ đề song ngữ',
-  tr: 'İki dilli altyazıları görüntülemek için YouTube altyazılarını açın',
-  pl: 'Włącz napisy w YouTube, aby wyświetlać napisy dwujęzyczne',
-  nl: 'Schakel YouTube-ondertiteling in om tweetalige ondertiteling weer te geven',
-  sv: 'Aktivera YouTube-undertexter för att visa tvåspråkiga undertexter',
-  da: 'Slå YouTube-undertekster til for at vise tosprogede undertekster',
-  no: 'Slå på YouTube-teksting for å vise tospråklige undertekster',
-  fi: 'Ota YouTube-tekstitys käyttöön näyttääksesi kaksikieliset tekstitykset',
-  it: 'Attiva i sottotitoli di YouTube per visualizzare i sottotitoli bilingui',
-  ro: 'Activați subtitrările YouTube pentru a afișa subtitrări bilingve',
-  hu: 'Kapcsolja be a YouTube-feliratokat a kétnyelvű feliratok megjelenítéséhez',
-  cs: 'Zapněte titulky YouTube, aby se zobrazovaly dvojjazyčné titulky',
-  hr: 'Uključite YouTube titlove za prikaz dvojezičnih titlova',
-  el: 'Ενεργοποιήστε τους υπότιτλους στο YouTube για να εμφανίζονται δίγλωσσοι υπότιτλοι',
-  iw: 'הפעילו את הכתוביות ב-YouTube כדי להציג כתוביות דו-לשוניות',
-  tl: 'I-on ang mga subtitle sa YouTube upang magpakita ng dalawang-wikang subtitle',
-  uk: 'Увімкніть субтитри YouTube, щоб відображати двомовні субтитри',
-  eu: 'Aktibatu YouTubeko azpitituluak azpititulu elebidunak bistaratzeko',
-  ca: 'Activa els subtítols de YouTube per mostrar subtítols bilingües',
-  gl: 'Activa os subtítulos de YouTube para mostrar subtítulos bilingües',
-  is: 'Kveiktu á YouTube-texta til að birta tvítyngdan texta',
-  sw: 'Washa manukuu ya YouTube ili kuonyesha manukuu ya lugha mbili',
-  et: 'Lülitage YouTube’i subtiitrid sisse, et kuvada kakskeelseid subtiitreid',
-  lv: 'Ieslēdziet YouTube subtitrus, lai rādītu divvalodu subtitrus',
-  lt: 'Įjunkite „YouTube“ subtitrus, kad būtų rodomi dvikalbiai subtitrai',
-  sk: 'Zapnite titulky YouTube, aby sa zobrazovali dvojjazyčné titulky',
-  sl: 'Vklopite podnapise v YouTubu za prikaz dvojezičnih podnapisov',
-  bg: 'Включете субтитрите в YouTube, за да се показват двуезични субтитри',
-  sr: 'Укључите YouTube титлове за приказ двојезичних титлова',
-  ur: 'دو لسانی سب ٹائٹلز دکھانے کے لیے YouTube سب ٹائٹلز آن کریں',
-  fa: 'برای نمایش زیرنویس دوزبانه، زیرنویس YouTube را روشن کنید',
-  mr: 'द्विभाषिक उपशीर्षके दाखवण्यासाठी YouTube उपशीर्षके सुरू करा',
-  bn: 'দ্বিভাষিক সাবটাইটেল দেখাতে YouTube সাবটাইটেল চালু করুন',
-  gu: 'દ્વિભાષી સબટાઇટલ બતાવવા માટે YouTube સબટાઇટલ ચાલુ કરો',
-  te: 'ద్విభాషా ఉపశీర్షికలను చూపడానికి YouTube ఉపశీర్షికలను ఆన్ చేయండి',
-  kn: 'ದ್ವಿಭಾಷಾ ಉಪಶೀರ್ಷಿಕೆಗಳನ್ನು ತೋರಿಸಲು YouTube ಉಪಶೀರ್ಷಿಕೆಗಳನ್ನು ಆನ್ ಮಾಡಿ',
-  ml: 'ദ്വിഭാഷാ സബ്‌ടൈറ്റിലുകൾ കാണിക്കാൻ YouTube സബ്‌ടൈറ്റിലുകൾ ഓണാക്കുക',
-  am: 'ባለሁለት ቋንቋ ንዑስ ርዕሶችን ለማሳየት የYouTube ንዑስ ርዕሶችን ያብሩ'
-});
+const {
+  loadingMessageDict,
+  aiLoadingMessageDict,
+  youtubeCaptionsDisabledMessageDict,
+  hintMessageDict,
+  autoTranslateSelectionMessageDict,
+  copyUiText,
+  resolveLocalizedMessage
+} = globalThis.lasDoscasMessages;
 
 function getLoadingMessage() {
-  const language = (currentSettings.lang || 'en').toLowerCase();
-  const prefix = language.split('-')[0];
-  return loadingMessageDict[language] || loadingMessageDict[prefix] || loadingMessageDict.en;
+  const dictionary = currentSettings.aiEnabled ? aiLoadingMessageDict : loadingMessageDict;
+  return resolveLocalizedMessage(dictionary, currentSettings.lang);
 }
 
 function getYouTubeCaptionsDisabledMessage() {
-  const language = (currentSettings.lang || 'en').toLowerCase();
-  const prefix = language.split('-')[0];
-  return youtubeCaptionsDisabledMessageDict[language] ||
-    youtubeCaptionsDisabledMessageDict[prefix] ||
-    youtubeCaptionsDisabledMessageDict.en;
+  return resolveLocalizedMessage(youtubeCaptionsDisabledMessageDict, currentSettings.lang);
 }
 
 function isSpaceDelimitedLang(langCode) {
@@ -150,133 +37,11 @@ function isRtlLanguage(langCode) {
 }
 
 function getHintMessage(targetLang) {
-  const lang = targetLang || 'en';
-  const prefix = lang.toLowerCase().split('-')[0];
-
-  const dict = {
-    'zh-CN': "[当前为自动生成字幕，已开启实时原声同步]",
-    'zh-TW': "[當前為自動生成字幕，已開啟實時原聲同步]",
-    'zh': "[当前为自动生成字幕，已开启实时原声同步]",
-    'es': "[Autogenerado: Sincronización en tiempo real activada]",
-    'fr': "[Sous-titres générés automatiquement: synchronisation en temps réel]",
-    'fr-CA': "[Sous-titres générés automatiquement: synchronisation en temps réel activée]",
-    'de': "[Automatisch erzeugte Untertitel: Echtzeitsynchronisation]",
-    'ja': "[自動生成字幕：リアルタイム同期が有効です]",
-    'ko': "[자동 생성 자막: 실시간 동기화 활성화됨]",
-    'pt': "[Gerado automaticamente: Sincronização em tempo real ativada]",
-    'id': "[Dihasilkan otomatis: Sinkronisasi waktu nyata diaktifkan]",
-    'ms': "[Dijana secara automatik: Penyegerakan masa nyata diaktifkan]",
-    'ru': "[Автоматические субтитры: синхронизация в реальном времени]",
-    'ar': "[تم الإنشاء تلقائيًا: تمت تمكين المزامنة في الوقت الفعلي]",
-    'hi': "[स्वतः उत्पन्न: रीयल-टाइम सिंक सक्षम]",
-    'ta': "[தானாக உருவாக்கப்பட்டவை: நிகழ்நேர ஒத்திசைவு இயக்கப்பட்டது]",
-    'th': "[สร้างอัตโนมัติ: เปิดใช้งานการซิงค์แบบเรียลไทม์]",
-    'vi': "[Được tạo tự động: Đã bật đồng bộ hóa theo thời gian thực]",
-    'tr': "[Otomatik oluşturuldu: Gerçek zamanlı senkronizasyon etkin]",
-    'pl': "[Wygenerowano automatycznie: Włączono synchronizację w czasie rzeczywistym]",
-    'nl': "[Automatisch gegenereerd: Realtime synchronisatie ingeschakeld]",
-    'sv': "[Autogenererad: Realtidssynkronisering aktiverad]",
-    'da': "[Automatisk genereret: Realtidssynkronisering aktiveret]",
-    'no': "[Autogenerert: Sanntidssynkronisering aktivert]",
-    'fi': "[Automaattisesti luotu: Reaaliaikainen synkronointi käytössä]",
-    'it': "[Generato automaticamente: Sincronizzazione in tempo reale attivata]",
-    'ro': "[Generat automat: Sincronizare în timp real activată]",
-    'hu': "[Automatikusan generált: Valós idejű szinkronizálás bekapcsolva]",
-    'cs': "[Automaticky generováno: Synchronizace v reálném čase povolena]",
-    'hr': "[Automatski generirano: Omogućena sinkronizacija u stvarnom vremenu]",
-    'el': "[Αυτόματη δημιουργία: Ενεργοποιήθηκε ο συγχρονισμός σε πραγματικό χρόνο]",
-    'iw': "[נוצר אוטומטית: סנכרון בזמן אמת מופעל]",
-    'tl': "[Awtomatikong nabuo: Na-enable ang real-time na pag-sync]",
-    'uk': "[Автоматично згенеровано: увімкнено синхронізацію в реальному часі]",
-    'eu': "[Automatikoki sortua: Denbora errealeko sinkronizazioa gaituta]",
-    'ca': "[Autogenerat: Sincronització en temps real activada]",
-    'gl': "[Xerado automaticamente: Sincronización en tempo real activada]",
-    'is': "[Sjálfvirkt framleitt: Rauntímasamstilling virk]",
-    'sw': "[Imetolewa kiotomatiki: Usawazishaji wa wakati halisi umewezeshwa]",
-    'et': "[Automaatselt loodud: Reaalajas sünkroonimine on lubatud]",
-    'lv': "[Automātiski ģenerēts: Iespējota reāllaika sinhronizācija]",
-    'lt': "[Automatiškai sugeneruota: Įjungtas sinchronizavimas realiuoju laiku]",
-    'sk': "[Automaticky generované: Synchronizácia v reálnom čase povolená]",
-    'sl': "[Samodejno ustvarjeno: Omogočena sinhronizacija v realnem času]",
-    'bg': "[Автоматично генерирано: Синхронизирането в реално време е активирано]",
-    'sr': "[Аутоматски генерисано: Синхронизација у реалном времену је омогућена]",
-    'ur': "[خود بخود تیار کردہ: ریئل ٹائم مطابقت پذیری فعال ہے]",
-    'fa': "[تولید خودکار: همگام‌سازی بی‌درنگ فعال شد]",
-    'mr': "[स्वयंचलितपणे व्युत्पन्न: रिअल-टाइम सिंक सक्षम]",
-    'bn': "[স্বয়ংক্রিয়ভাবে তৈরি: রিয়েল-টাইম সিঙ্ক সক্ষম করা হয়েছে]",
-    'gu': "[આપોઆપ જનરેટ થયેલ: રીઅલ-ટાઇમ સિંક સક્ષમ]",
-    'te': "[స్వయంచాలకంగా రూపొందించబడింది: నిజ-సమయ సమకాలీకరణ ప్రారంభించబడింది]",
-    'kn': "[ಸ್ವಯಂಚಾಲಿತವಾಗಿ ರಚಿಸಲಾಗಿದೆ: ನೈಜ-ಸಮಯದ ಸಿಂಕ್ ಸಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ]",
-    'ml': "[സ്വയമേവ സൃഷ്‌ടിച്ചത്: തത്സമയ സമന്വയം പ്രവർത്തനക്ഷമമാക്കി]",
-    'am': "[በራስ-ሰር የተፈጠረ፡ የእውነተኛ ጊዜ ማመሳሰል ነቅቷል]",
-    'en': "[Auto-generated: Real-time sync enabled]"
-  };
-
-  return dict[lang] || dict[prefix] || dict['en'];
+  return resolveLocalizedMessage(hintMessageDict, targetLang);
 }
 
 function getAutoTranslateSelectionMessage(targetLang) {
-  const lang = targetLang || 'en';
-  const prefix = lang.toLowerCase().split('-')[0];
-  const dict = {
-    'zh-CN': '[请在 YouTube 字幕菜单中选择字幕或“自动生成”字幕，以便 lasDoscas 正常提供双语字幕]',
-    'zh-TW': '[請在 YouTube 字幕選單中選擇字幕或「自動產生」字幕，以便 lasDoscas 正常提供雙語字幕]',
-    'zh': '[请在 YouTube 字幕菜单中选择字幕或“自动生成”字幕，以便 lasDoscas 正常提供双语字幕]',
-    'en': '[Choose a caption track or an auto-generated caption track in YouTube so lasDoscas can provide bilingual subtitles]',
-    'es': '[Selecciona una pista de subtítulos o de subtítulos generados automáticamente en YouTube para usar los subtítulos bilingües de lasDoscas]',
-    'fr': '[Choisissez une piste de sous-titres ou de sous-titres générés automatiquement dans YouTube pour utiliser les sous-titres bilingues de lasDoscas]',
-    'fr-CA': '[Choisissez une piste de sous-titres ou de sous-titres générés automatiquement dans YouTube afin que lasDoscas puisse afficher des sous-titres bilingues]',
-    'de': '[Wählen Sie in YouTube eine Untertitelspur oder eine automatisch erzeugte Untertitelspur aus, damit lasDoscas zweisprachige Untertitel anzeigen kann]',
-    'ja': '[lasDoscas の二言語字幕を利用するには、YouTube で字幕または自動生成字幕を選択してください]',
-    'ko': '[lasDoscas 이중 언어 자막을 사용하려면 YouTube에서 자막 또는 자동 생성 자막을 선택하세요]',
-    'pt': '[Selecione uma faixa de legendas ou de legendas geradas automaticamente no YouTube para usar as legendas bilíngues do lasDoscas]',
-    'ru': '[Выберите обычные или автоматически созданные субтитры в YouTube, чтобы lasDoscas мог показывать двуязычные субтитры]',
-    'ar': '[اختر مسار ترجمة مصاحبة أو ترجمة مصاحبة تم إنشاؤها تلقائيًا في YouTube ليتمكن lasDoscas من عرض ترجمة ثنائية اللغة]',
-    'hi': '[lasDoscas के द्विभाषी उपशीर्षक उपयोग करने के लिए YouTube में उपशीर्षक या अपने-आप बने उपशीर्षक चुनें]',
-    'id': '[Pilih trek subtitel atau subtitel yang dibuat otomatis di YouTube agar lasDoscas dapat menampilkan subtitel dwibahasa]',
-    'ms': '[Pilih sari kata atau sari kata yang dijana secara automatik dalam YouTube supaya lasDoscas dapat memaparkan sari kata dwibahasa]',
-    'ta': '[lasDoscas இருமொழி வசனங்களை வழங்க, YouTube வசன வரிசையில் வசனங்கள் அல்லது தானாக உருவாக்கப்பட்ட வசனங்களைத் தேர்ந்தெடுக்கவும்]',
-    'th': '[เลือกแทร็กคำบรรยายหรือคำบรรยายที่สร้างอัตโนมัติใน YouTube เพื่อให้ lasDoscas แสดงคำบรรยายสองภาษาได้]',
-    'vi': '[Hãy chọn phụ đề hoặc phụ đề được tạo tự động trong YouTube để lasDoscas có thể hiển thị phụ đề song ngữ]',
-    'it': '[Seleziona una traccia di sottotitoli o di sottotitoli generati automaticamente in YouTube per usare i sottotitoli bilingui di lasDoscas]',
-    'tr': '[lasDoscas iki dilli altyazıları kullanmak için YouTube’da bir altyazı parçası veya otomatik oluşturulan altyazı parçası seçin]',
-    'pl': '[Wybierz w YouTube ścieżkę napisów lub automatycznie wygenerowaną ścieżkę napisów, aby lasDoscas mógł wyświetlać napisy dwujęzyczne]',
-    'nl': '[Selecteer in YouTube een ondertitelspoor of een automatisch gegenereerd ondertitelspoor zodat lasDoscas tweetalige ondertitels kan tonen]',
-    'sv': '[Välj ett undertextspår eller ett automatiskt genererat undertextspår i YouTube så att lasDoscas kan visa tvåspråkiga undertexter]',
-    'da': '[Vælg et undertekstspor eller et automatisk genereret undertekstspor i YouTube, så lasDoscas kan vise tosprogede undertekster]',
-    'no': '[Velg et tekstspor eller et automatisk generert tekstspor i YouTube, slik at lasDoscas kan vise tospråklige undertekster]',
-    'fi': '[Valitse YouTubessa tekstitysraita tai automaattisesti luotu tekstitysraita, jotta lasDoscas voi näyttää kaksikieliset tekstitykset]',
-    'ro': '[Selectați în YouTube o pistă de subtitrări sau una generată automat, pentru ca lasDoscas să poată afișa subtitrări bilingve]',
-    'hu': '[Válasszon feliratsávot vagy automatikusan létrehozott feliratsávot a YouTube-on, hogy a lasDoscas kétnyelvű feliratokat jeleníthessen meg]',
-    'cs': '[Vyberte na YouTube stopu titulků nebo automaticky generovaných titulků, aby lasDoscas mohl zobrazovat dvojjazyčné titulky]',
-    'hr': '[Odaberite zapis titlova ili automatski generiranih titlova na YouTubeu kako bi lasDoscas mogao prikazivati dvojezične titlove]',
-    'el': '[Επιλέξτε στο YouTube υπότιτλους ή υπότιτλους που δημιουργήθηκαν αυτόματα, ώστε το lasDoscas να μπορεί να εμφανίσει δίγλωσσους υπότιτλους]',
-    'iw': '[בחרו ב-YouTube רצועת כתוביות או כתוביות שנוצרו אוטומטית כדי ש-lasDoscas יוכל להציג כתוביות דו-לשוניות]',
-    'tl': '[Pumili ng subtitle track o awtomatikong nabuong subtitle track sa YouTube para makapagpakita ang lasDoscas ng dalawang-wikang subtitle]',
-    'uk': '[Виберіть у YouTube доріжку субтитрів або автоматично створених субтитрів, щоб lasDoscas міг показувати двомовні субтитри]',
-    'eu': '[Hautatu azpititulu-pista bat edo automatikoki sortutako azpititulu-pista bat YouTuben, lasDoscasek azpititulu elebidunak erakutsi ahal izateko]',
-    'ca': '[Seleccioneu una pista de subtítols o de subtítols generats automàticament a YouTube perquè lasDoscas pugui mostrar subtítols bilingües]',
-    'gl': '[Selecciona en YouTube unha pista de subtítulos ou de subtítulos xerados automaticamente para que lasDoscas poida mostrar subtítulos bilingües]',
-    'is': '[Veldu textabraut eða sjálfvirkt myndaða textabraut á YouTube svo lasDoscas geti birt tvítyngdan texta]',
-    'sw': '[Chagua manukuu au manukuu yaliyotengenezwa kiotomatiki katika YouTube ili lasDoscas iweze kuonyesha manukuu ya lugha mbili]',
-    'et': '[Valige YouTube’is subtiitrite rada või automaatselt loodud subtiitrite rada, et lasDoscas saaks kuvada kakskeelseid subtiitreid]',
-    'lv': '[Izvēlieties YouTube subtitru celiņu vai automātiski ģenerētu subtitru celiņu, lai lasDoscas varētu rādīt divvalodu subtitrus]',
-    'lt': '[Pasirinkite „YouTube“ subtitrų takelį arba automatiškai sugeneruotų subtitrų takelį, kad „lasDoscas“ galėtų rodyti dvikalbius subtitrus]',
-    'sk': '[Vyberte na YouTube stopu titulkov alebo automaticky generovaných titulkov, aby lasDoscas mohol zobrazovať dvojjazyčné titulky]',
-    'sl': '[V YouTubu izberite podnapise ali samodejno ustvarjene podnapise, da bo lasDoscas lahko prikazoval dvojezične podnapise]',
-    'bg': '[Изберете в YouTube писта със субтитри или автоматично генерирани субтитри, за да може lasDoscas да показва двуезични субтитри]',
-    'sr': '[Изаберите на YouTube-у титлове или аутоматски генерисане титлове како би lasDoscas могао да приказује двојезичне титлове]',
-    'ur': '[YouTube میں سب ٹائٹل ٹریک یا خودکار طور پر تیار کردہ سب ٹائٹل ٹریک منتخب کریں تاکہ lasDoscas دو لسانی سب ٹائٹلز دکھا سکے]',
-    'fa': '[در YouTube یک مسیر زیرنویس یا زیرنویس تولیدشده به‌صورت خودکار را انتخاب کنید تا lasDoscas بتواند زیرنویس دوزبانه نمایش دهد]',
-    'mr': '[lasDoscas द्विभाषिक उपशीर्षके दाखवू शकण्यासाठी YouTube मध्ये उपशीर्षक ट्रॅक किंवा आपोआप तयार केलेला उपशीर्षक ट्रॅक निवडा]',
-    'bn': '[lasDoscas যেন দ্বিভাষিক সাবটাইটেল দেখাতে পারে, সে জন্য YouTube-এ একটি সাবটাইটেল ট্র্যাক বা স্বয়ংক্রিয়ভাবে তৈরি সাবটাইটেল ট্র্যাক নির্বাচন করুন]',
-    'gu': '[lasDoscas દ્વિભાષી સબટાઇટલ બતાવી શકે તે માટે YouTube માં સબટાઇટલ ટ્રૅક અથવા આપમેળે જનરેટ થયેલ સબટાઇટલ ટ્રૅક પસંદ કરો]',
-    'te': '[lasDoscas ద్విభాషా ఉపశీర్షికలను చూపడానికి YouTubeలో ఉపశీర్షిక ట్రాక్ లేదా స్వయంచాలకంగా రూపొందించిన ఉపశీర్షిక ట్రాక్‌ను ఎంచుకోండి]',
-    'kn': '[lasDoscas ದ್ವಿಭಾಷಾ ಉಪಶೀರ್ಷಿಕೆಗಳನ್ನು ತೋರಿಸಲು YouTube ನಲ್ಲಿ ಉಪಶೀರ್ಷಿಕೆ ಟ್ರ್ಯಾಕ್ ಅಥವಾ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ರಚಿಸಲಾದ ಉಪಶೀರ್ಷಿಕೆ ಟ್ರ್ಯಾಕ್ ಆಯ್ಕೆಮಾಡಿ]',
-    'ml': '[lasDoscas-ന് ദ്വിഭാഷാ സബ്‌ടൈറ്റിലുകൾ കാണിക്കാൻ YouTube-ൽ ഒരു സബ്‌ടൈറ്റിൽ ട്രാക്കോ സ്വയമേവ സൃഷ്‌ടിച്ച സബ്‌ടൈറ്റിൽ ട്രാക്കോ തിരഞ്ഞെടുക്കുക]',
-    'am': '[lasDoscas ባለሁለት ቋንቋ ንዑስ ርዕሶችን ማሳየት እንዲችል በYouTube ውስጥ የንዑስ ርዕስ ትራክ ወይም በራስ-ሰር የተፈጠረ የንዑስ ርዕስ ትራክ ይምረጡ]'
-  };
-  return dict[lang] || dict[prefix] || dict.en;
+  return resolveLocalizedMessage(autoTranslateSelectionMessageDict, targetLang);
 }
 
 function dieQuietly() {
@@ -347,26 +112,6 @@ function getDefaultUiLang() {
   return prefix === 'zh' || prefix === 'es' ? prefix : 'en';
 }
 
-const copyUiText = Object.freeze({
-  zh: {
-    subtitleLabel: '复制当前字幕',
-    fullLabel: '复制完整信息',
-    copied: '已复制',
-    failed: '复制失败'
-  },
-  en: {
-    subtitleLabel: 'Copy current subtitle',
-    fullLabel: 'Copy full details',
-    copied: 'Copied',
-    failed: 'Copy failed'
-  },
-  es: {
-    subtitleLabel: 'Copiar el subtítulo actual',
-    fullLabel: 'Copiar toda la información',
-    copied: 'Copiado',
-    failed: 'No se pudo copiar'
-  }
-});
 
 let lastText = "";
 let lastMatchedSource = "";
@@ -402,6 +147,7 @@ const TRACK_MODE = Object.freeze({
 
 const PLAYER_BRIDGE_SOURCE = 'lasdoscas-player-bridge-v1';
 const PLAYER_SNAPSHOT_TIMEOUT_MS = 1500;
+const CAPTION_FETCH_TIMEOUT_MS = 8000;
 const TRACK_RETRY_DELAYS_MS = [350, 900, 1800, 3200];
 const AUTO_FILE_TRANSLATION_RETRY_MS = 2000;
 const YOUTUBE_TRANSLATION_WARMUP_MS = 300;
@@ -412,6 +158,10 @@ const AUTO_TRANSLATION_WINDOW_CONCURRENCY = 4;
 const AUTO_TRANSLATION_WINDOW_REFRESH_SECONDS = 5;
 const AUTO_FILE_WARMUP_TIMEOUT_MS = 1500;
 const PRELOAD_BATCH_DELAY_MS = 80;
+const AI_TRANSLATION_BATCH_SIZE = 48;
+const SUBTITLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SUBTITLE_CACHE_MAX_CUES = 2500;
+const SUBTITLE_CACHE_SAVE_DEBOUNCE_MS = 1200;
 const DOM_TRANSLATION_DEBOUNCE_MS = 80;
 const LIVE_ASR_PREFETCH_MS = 120;
 const LIVE_ASR_COMMIT_STABILITY_MS = 260;
@@ -428,6 +178,12 @@ const DISPLAY_MIN_PART_DURATION_SECONDS = 1.5;
 const AUTO_FILE_RENDER_INTERVAL_MS = 50;
 const FILE_RENDER_INTERVAL_MS = 50;
 const COPY_FEEDBACK_DURATION_MS = 500;
+const BASE_PLAYER_WIDTH_PX = 850;
+const PLAYER_SCALE_EXPONENT = 0.5;
+const MIN_PLAYER_SCALE = 0.75;
+const MAX_PLAYER_SCALE = 1.4;
+const MIN_MEASURABLE_PLAYER_WIDTH_PX = 200;
+const FULLSCREEN_WRAPPER_WIDTH_RATIO = 0.8;
 
 let trackMode = TRACK_MODE.UNKNOWN;
 let isAutoGenerated = false;
@@ -446,12 +202,72 @@ let autoTranslationWindowAnchor = -1;
 let bridgeRequestSequence = 0;
 const bridgeRequests = new Map();
 const inflightTranslations = new Map();
+const inflightAiTranslations = new Map();
+const attemptedAiTranslations = new Set();
 let isShiftPressed = false;
 let copyFeedbackTimer = null;
 let currentVideoMetadata = { videoId: '', title: '', publishDate: '' };
 
 let preloadedTranslations = new Map();
+let translationSources = new Map();
 let preloadedSentencesList = [];
+let subtitleCacheLoadPromise = null;
+let subtitleCacheSaveTimer = null;
+
+function getSubtitleCacheKey() {
+  const videoId = String(currentVideoMetadata.videoId || getCurrentVideoId() || '').trim();
+  const trackKey = String(currentTrackKey || '').trim();
+  const language = String(currentSettings.lang || '').toLowerCase();
+  if (!videoId || !trackKey || !language) return '';
+  // Keep storage keys compact even when YouTube's baseUrl is long.
+  let hash = 5381;
+  for (let index = 0; index < trackKey.length; index += 1) {
+    hash = ((hash * 33) ^ trackKey.charCodeAt(index)) >>> 0;
+  }
+  return `lasdoscasSubtitleCache:${videoId}:${hash.toString(16)}:${language}`;
+}
+
+function loadSubtitleTranslationCache() {
+  const cacheKey = getSubtitleCacheKey();
+  if (!cacheKey) return Promise.resolve(false);
+  subtitleCacheLoadPromise = new Promise((resolve) => {
+    chrome.storage.local.get(cacheKey, (data) => {
+      const entry = data?.[cacheKey];
+      if (!entry || Number(entry.expiresAt) <= Date.now() || typeof entry.translations !== 'object') {
+        resolve(false);
+        return;
+      }
+      Object.entries(entry.translations).forEach(([source, translation]) => {
+        if (source && typeof translation === 'string' && translation) {
+          preloadedTranslations.set(source, translation);
+          translationSources.set(source, entry.sources?.[source] || 'standard');
+        }
+      });
+      resolve(true);
+    });
+  });
+  return subtitleCacheLoadPromise;
+}
+
+function scheduleSubtitleTranslationCacheSave() {
+  const cacheKey = getSubtitleCacheKey();
+  if (!cacheKey || !preloadedTranslations.size) return;
+  clearTimeout(subtitleCacheSaveTimer);
+  subtitleCacheSaveTimer = setTimeout(() => {
+    const translations = {};
+    const sources = {};
+    let count = 0;
+    preloadedTranslations.forEach((translation, source) => {
+      if (count >= SUBTITLE_CACHE_MAX_CUES || !source || !translation) return;
+      translations[source] = translation;
+      sources[source] = translationSources.get(source) || 'standard';
+      count += 1;
+    });
+    chrome.storage.local.set({
+      [cacheKey]: { version: 1, expiresAt: Date.now() + SUBTITLE_CACHE_TTL_MS, translations, sources }
+    });
+  }, SUBTITLE_CACHE_SAVE_DEBOUNCE_MS);
+}
 
 let currentSettings = {
   enabled: false,
@@ -471,6 +287,8 @@ let currentSettings = {
   transFsBold: true,
   fsBgStyle: 'none',
   fsBgOpacity: '75',
+  aiEnabled: false,
+  aiFallback: true,
   uiLang: getDefaultUiLang()
 };
 
@@ -512,11 +330,13 @@ try {
       renderedFileCueIndex = -1;
       renderFileCue();
     }
-    if (changes.lang || changes.enabled) {
+    if (changes.lang || changes.enabled || changes.aiEnabled || changes.aiFallback) {
       lastText = ""; 
       lastMatchedSource = "";
       if (currentSettings.enabled) {
         preloadedTranslations.clear();
+        translationSources.clear();
+        attemptedAiTranslations.clear();
         beginTrackLoad('settings changed');
       } else {
         cancelTrackLoad();
@@ -1010,6 +830,10 @@ function ensureSubtitleContainer() {
     wrapper.setAttribute('aria-atomic', 'true');
 
     wrapper.innerHTML = `
+      <span class="lasdoscas-ai-indicator" aria-hidden="true">
+        <img class="lasdoscas-ai-loading-icon" alt="" src="${chrome.runtime.getURL('ai_loading.svg')}">
+        <img class="lasdoscas-ai-ready-icon" alt="" src="${chrome.runtime.getURL('ai.svg')}">
+      </span>
       <div class="custom-source-text" dir="auto">&nbsp;</div>
       <div class="custom-translated-text" dir="auto">&nbsp;</div>
       <button type="button" class="lasdoscas-copy-button" data-copy-mode="subtitle" tabindex="-1">
@@ -1098,14 +922,14 @@ function updateWrapperDimensions() {
 
   const targetWidth = actualPlayer.getBoundingClientRect().width;
   
-  let baseRatio = targetWidth / 850;
-  let playerScale = Math.pow(baseRatio, 0.5); 
-  playerScale = Math.max(0.75, Math.min(playerScale, 1.4)); 
+  const baseRatio = targetWidth / BASE_PLAYER_WIDTH_PX;
+  let playerScale = Math.pow(baseRatio, PLAYER_SCALE_EXPONENT);
+  playerScale = Math.max(MIN_PLAYER_SCALE, Math.min(playerScale, MAX_PLAYER_SCALE));
   
   wrapper.style.setProperty('--player-scale', playerScale, 'important');
 
   if (layoutMode === 'theater') {
-    if (targetWidth > 200) {
+    if (targetWidth > MIN_MEASURABLE_PLAYER_WIDTH_PX) {
       wrapper.style.setProperty('width', `${targetWidth}px`, 'important');
       wrapper.style.setProperty('max-width', `${targetWidth}px`, 'important');
     }
@@ -1119,8 +943,8 @@ function updateWrapperDimensions() {
       wrapper.style.setProperty('left', '0', 'important');
       wrapper.style.setProperty('right', '0', 'important');
       wrapper.style.setProperty('margin', '0 auto', 'important');
-    } else if (targetWidth > 200) {
-      wrapper.style.setProperty('width', `${targetWidth * 0.8}px`, 'important');
+    } else if (targetWidth > MIN_MEASURABLE_PLAYER_WIDTH_PX) {
+      wrapper.style.setProperty('width', `${targetWidth * FULLSCREEN_WRAPPER_WIDTH_RATIO}px`, 'important');
       wrapper.style.setProperty('max-width', '100%', 'important');
       wrapper.style.removeProperty('inset-inline-start');
       wrapper.style.setProperty('left', '0', 'important');
@@ -1400,7 +1224,7 @@ function initCCButtonObserver() {
   });
 }
 
-function updateSubtitleContent(source, translated, isHtmlFlag = false) {
+function updateSubtitleContent(source, translated, isHtmlFlag = false, translationSource = '', aiState = '') {
   if (isOrphaned) return;
   const wrapper = ensureSubtitleContainer();
   if (!wrapper) return;
@@ -1416,6 +1240,13 @@ function updateSubtitleContent(source, translated, isHtmlFlag = false) {
         transText.textContent = translated || "";
         if (!translated) transText.innerHTML = "&nbsp;";
     }
+  }
+
+  wrapper.setAttribute('data-translation-source', translationSource || '');
+  if (currentSettings.aiEnabled) {
+    wrapper.setAttribute('data-ai-state', aiState || (translationSource === 'gemini' ? 'ready' : 'preparing'));
+  } else {
+    wrapper.removeAttribute('data-ai-state');
   }
 
   updateCopyAvailability(wrapper);
@@ -1437,6 +1268,9 @@ function clearSubtitleContent() {
     if (loadingMessageVisible) transNode.innerHTML = getSecondSubtitleStatusHtml(lastText);
     else transNode.innerHTML = "&nbsp;";
   }
+  wrapper.setAttribute('data-translation-source', '');
+  if (currentSettings.aiEnabled) wrapper.setAttribute('data-ai-state', 'preparing');
+  else wrapper.removeAttribute('data-ai-state');
 
   updateCopyAvailability(wrapper);
   updateWrapperVisibility();
@@ -1521,6 +1355,7 @@ function getSentenceSegmenter(languageCode) {
     segmenter = new Intl.Segmenter(locale, { granularity: 'sentence' });
     sentenceSegmenters.set(cacheKey, segmenter);
   }
+
   return segmenter;
 }
 
@@ -1819,7 +1654,7 @@ function getRollingAsrDelta(previousText, nextText, useSpace) {
   return next;
 }
 
-function renderLiveAsrContent(sourceText, translation, useHint, renderSequence, generation) {
+function renderLiveAsrContent(sourceText, translation, useHint, renderSequence, generation, translationSource = '') {
   if (renderSequence !== liveAsrRenderSequence || generation !== trackLoadGeneration) return;
   hideLoadingMessage();
   lastText = sourceText;
@@ -1827,7 +1662,8 @@ function renderLiveAsrContent(sourceText, translation, useHint, renderSequence, 
   updateSubtitleContent(
     sourceText,
     useHint ? getAutoGeneratedHintHtml() : translation,
-    useHint
+    useHint,
+    useHint ? '' : translationSource
   );
 }
 
@@ -1851,13 +1687,30 @@ function translateLiveAsrSentence(sourceText, renderSequence, generation) {
 
   const cachedTranslation = preloadedTranslations.get(sourceText);
   if (cachedTranslation) {
-    renderLiveAsrContent(sourceText, cachedTranslation, false, renderSequence, generation);
+    if (currentSettings.aiEnabled && translationSources.get(sourceText) !== 'gemini') {
+      startAiEnhancement(sourceText, generation);
+    }
+    renderLiveAsrContent(
+      sourceText,
+      cachedTranslation,
+      false,
+      renderSequence,
+      generation,
+      translationSources.get(sourceText) || ''
+    );
     return;
   }
 
   ensureCueTranslation(sourceText, generation).then((translation) => {
     if (!translation || renderSequence !== liveAsrRenderSequence || generation !== trackLoadGeneration) return;
-    renderLiveAsrContent(sourceText, translation, false, renderSequence, generation);
+    renderLiveAsrContent(
+      sourceText,
+      translation,
+      false,
+      renderSequence,
+      generation,
+      translationSources.get(sourceText) || ''
+    );
   });
 }
 
@@ -1922,29 +1775,41 @@ function scheduleLiveAsrClear(containerTarget) {
   }, 1400);
 }
 
-function requestTranslation(text, lang = currentSettings.lang) {
+function sendTranslationRequest(action, text, lang = currentSettings.lang) {
   return new Promise((resolve) => {
     if (!text || isOrphaned || !currentSettings.enabled) {
-      resolve('');
+      resolve({ text: '', source: '' });
       return;
     }
 
+    const finish = (response) => resolve({
+      text: response?.translation?.trim() || '',
+      source: response?.source || '',
+      error: response?.error || ''
+    });
+
     try {
-      chrome.runtime.sendMessage({ action: 'translate', text, lang }, (response) => {
+      chrome.runtime.sendMessage({ action, text, lang, sourceLang: currentSourceLang }, (response) => {
         if (chrome.runtime.lastError) {
-          if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) {
-            dieQuietly();
-          }
-          resolve('');
+          if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) dieQuietly();
+          resolve({ text: '', source: '' });
           return;
         }
-        resolve(response?.translation?.trim() || '');
+        finish(response);
       });
     } catch (error) {
       if (error.message?.includes('Extension context invalidated')) dieQuietly();
-      resolve('');
+      resolve({ text: '', source: '' });
     }
   });
+}
+
+function requestTranslation(text, lang = currentSettings.lang) {
+  return sendTranslationRequest('translate', text, lang);
+}
+
+function requestAiTranslation(text, lang = currentSettings.lang) {
+  return sendTranslationRequest('translate_ai', text, lang);
 }
 
 function renderDomTranslationFallback(currentText) {
@@ -1956,23 +1821,37 @@ function renderDomTranslationFallback(currentText) {
     hideLoadingMessage();
     lastText = currentText;
     lastMatchedSource = '';
-    updateSubtitleContent(currentText, cachedTranslation);
+    updateSubtitleContent(
+      currentText,
+      cachedTranslation,
+      false,
+      translationSources.get(currentText) || ''
+    );
+    if (currentSettings.aiEnabled) startAiEnhancement(currentText, trackLoadGeneration);
     return;
   }
 
-  clearSubtitleContent();
   lastText = currentText;
   lastMatchedSource = '';
+  const waitingForAi = currentSettings.aiEnabled && currentSettings.showTrans;
+  if (waitingForAi) {
+    hideLoadingMessage();
+    updateSubtitleContent(currentText, '', false, '', 'preparing');
+  }
 
   translateDebounceTimer = setTimeout(async () => {
     const generation = trackLoadGeneration;
     const targetLang = currentSettings.lang;
-    const translation = await requestTranslation(currentText, targetLang);
-    if (!translation || generation !== trackLoadGeneration || currentText !== lastText) return;
+    if (currentSettings.aiEnabled) startAiEnhancement(currentText, generation);
+    const result = await requestTranslation(currentText, targetLang);
+    if (!result.text || generation !== trackLoadGeneration || currentText !== lastText) return;
 
-    preloadedTranslations.set(currentText, translation);
-    hideLoadingMessage();
-    updateSubtitleContent(currentText, translation);
+    if (translationSources.get(currentText) !== 'gemini') {
+      preloadedTranslations.set(currentText, result.text);
+      translationSources.set(currentText, result.source || 'standard');
+      hideLoadingMessage();
+      updateSubtitleContent(currentText, result.text, false, result.source || 'standard', currentSettings.aiEnabled ? 'preparing' : '');
+    }
   }, DOM_TRANSLATION_DEBOUNCE_MS);
 }
 
@@ -1987,9 +1866,10 @@ function bindMutationObserver(containerTarget) {
     }
     if (!currentSettings.enabled) return;
 
-    if (trackMode === TRACK_MODE.DISCOVERING ||
-        trackMode === TRACK_MODE.FILE_WARMING ||
-        trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE) return;
+    // Authored captions can fall back to the native DOM while the downloadable
+    // track is warming. FILE_READY takes over with the timestamped renderer
+    // once the file is available.
+    if (trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE) return;
 
     if (trackMode === TRACK_MODE.FILE_READY) {
       renderFileCue();
@@ -2041,11 +1921,15 @@ function handlePlayerBridgeMessage(event) {
   if (message.type === 'TRACK_CHANGED') {
     cachePlayerSnapshotMetadata(message.snapshot);
     cacheCCAvailability(message.snapshot);
-    const ccStateChanged = cacheYouTubeCCEnabled(message.snapshot);
+    cacheYouTubeCCEnabled(message.snapshot);
     if (!currentSettings.enabled || isOrphaned) return;
-    if (message.snapshot?.captionsEnabled === false || ccStateChanged) return;
+    // A track selection can briefly toggle YouTube's CC button while the
+    // player swaps caption tracks. Do not discard the track change just
+    // because that transient button state changed; only stop when CC is
+    // actually off.
+    if (message.snapshot?.captionsEnabled === false) return;
     const nextTrackKey = message.snapshot?.trackKey || '';
-    if (currentTrackKey && nextTrackKey && nextTrackKey !== currentTrackKey) {
+    if (nextTrackKey && nextTrackKey !== currentTrackKey) {
       beginTrackLoad('YouTube caption track changed');
     }
   }
@@ -2081,6 +1965,9 @@ function cancelTrackLoad() {
   if (trackAbortController) trackAbortController.abort();
   trackAbortController = null;
   inflightTranslations.clear();
+  subtitleCacheLoadPromise = null;
+  clearTimeout(subtitleCacheSaveTimer);
+  subtitleCacheSaveTimer = null;
 }
 
 function beginTrackLoad(reason = 'refresh') {
@@ -2103,6 +1990,8 @@ function beginTrackLoad(reason = 'refresh') {
   currentTrackKey = '';
   currentCueIndex = -1;
   preloadedTranslations.clear();
+  translationSources.clear();
+  attemptedAiTranslations.clear();
   preloadedSentencesList = [];
   showLoadingMessage();
 
@@ -2127,6 +2016,10 @@ function scheduleTrackRetry(generation, attempt, terminalMode, reason) {
   if (attempt >= TRACK_RETRY_DELAYS_MS.length) {
     trackMode = terminalMode;
     console.info(`lasDoscas: 字幕轨道预加载未完成，进入 ${terminalMode} 模式：${reason}`);
+    // A failed track load must not leave the permanent loading banner up.
+    // The native-caption observer can still provide the source line while
+    // the retryable state is visible.
+    hideLoadingMessage();
     updateWrapperVisibility();
     return;
   }
@@ -2140,21 +2033,37 @@ async function downloadCaptionJson3(trackUrl, signal, targetLang = '') {
   url.searchParams.set('fmt', 'json3');
   if (targetLang) url.searchParams.set('tlang', targetLang);
 
-  const response = await fetch(url.toString(), { signal, credentials: 'include' });
-  if (!response.ok) throw new Error(`字幕服务器返回 ${response.status}`);
-
-  const text = await response.text();
-  if (!text.trim()) throw new Error('字幕文件为空');
-
-  let data;
+  const timeoutController = new AbortController();
+  const abortFromParent = () => timeoutController.abort();
+  if (signal?.aborted) timeoutController.abort();
+  else signal?.addEventListener('abort', abortFromParent, { once: true });
+  const timeoutId = setTimeout(() => timeoutController.abort(), CAPTION_FETCH_TIMEOUT_MS);
   try {
-    data = JSON.parse(text);
-  } catch (error) {
-    throw new Error('字幕文件不是有效的 JSON3');
-  }
+    const response = await fetch(url.toString(), {
+      signal: timeoutController.signal,
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error(`字幕服务器返回 ${response.status}`);
 
-  if (!Array.isArray(data.events)) throw new Error('字幕文件不包含 events');
-  return data;
+    const text = await response.text();
+    if (!text.trim()) throw new Error('字幕文件为空');
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      throw new Error('字幕文件不是有效的 JSON3');
+    }
+
+    if (!Array.isArray(data.events)) throw new Error('字幕文件不包含 events');
+    return data;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('字幕文件请求超时');
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abortFromParent);
+  }
 }
 
 async function downloadAndParseSubtitles(trackUrl, signal, options = {}) {
@@ -2416,8 +2325,11 @@ function seedTranslationsFromYouTubeTrack(sourceCues, translatedData, targetLang
   }
 
   mappedPairs.forEach(([source, translation]) => {
+    if (translationSources.get(source) === 'gemini') return;
     preloadedTranslations.set(source, translation);
+    translationSources.set(source, 'standard');
   });
+  scheduleSubtitleTranslationCacheSave();
   return mappedPairs.length;
 }
 
@@ -2487,18 +2399,67 @@ function getTranslationRequestKey(sourceText, generation, lang = currentSettings
   return `${generation}|${lang}|${sourceText}`;
 }
 
-async function ensureCueTranslation(sourceText, generation = trackLoadGeneration) {
+function applyAiTranslation(sourceText, result, generation) {
+  if (!result?.text || result.source !== 'gemini' || generation !== trackLoadGeneration ||
+      !currentSettings.enabled || !currentSettings.aiEnabled) return false;
+  preloadedTranslations.set(sourceText, result.text);
+  translationSources.set(sourceText, 'gemini');
+  scheduleSubtitleTranslationCacheSave();
+  if (trackMode === TRACK_MODE.FILE_READY && sourceText === lastMatchedSource) {
+    renderFileCue();
+  } else if (sourceText === lastText) {
+    hideLoadingMessage();
+    updateSubtitleContent(sourceText, result.text, false, 'gemini', 'ready');
+  }
+  return true;
+}
+
+function startAiEnhancement(sourceText, generation = trackLoadGeneration) {
+  if (!sourceText || !currentSettings.aiEnabled || !currentSettings.showTrans ||
+      generation !== trackLoadGeneration) return null;
+  const requestKey = getTranslationRequestKey(sourceText, generation);
+  if (inflightAiTranslations.has(requestKey)) return inflightAiTranslations.get(requestKey);
+  if (attemptedAiTranslations.has(requestKey)) return null;
+  attemptedAiTranslations.add(requestKey);
+  const request = requestAiTranslation(sourceText).then((result) => {
+    inflightAiTranslations.delete(requestKey);
+    applyAiTranslation(sourceText, result, generation);
+    return result;
+  }).catch(() => {
+    inflightAiTranslations.delete(requestKey);
+    return { text: '', source: '' };
+  });
+  inflightAiTranslations.set(requestKey, request);
+  return request;
+}
+
+async function ensureCueTranslation(sourceText, generation = trackLoadGeneration, options = {}) {
   if (!sourceText) return '';
-  if (preloadedTranslations.has(sourceText)) return preloadedTranslations.get(sourceText);
+  if (preloadedTranslations.has(sourceText)) {
+    if (currentSettings.aiEnabled && translationSources.get(sourceText) !== 'gemini') {
+      startAiEnhancement(sourceText, generation);
+    }
+    return preloadedTranslations.get(sourceText);
+  }
   const requestKey = getTranslationRequestKey(sourceText, generation);
   if (inflightTranslations.has(requestKey)) return inflightTranslations.get(requestKey);
 
-  const request = requestTranslation(sourceText).then((translation) => {
+  if (currentSettings.aiEnabled && !options.skipAi) startAiEnhancement(sourceText, generation);
+
+  const request = requestTranslation(sourceText).then((result) => {
     inflightTranslations.delete(requestKey);
-    if (!translation || generation !== trackLoadGeneration) return translation || '';
-    preloadedTranslations.set(sourceText, translation);
-    if (sourceText === lastMatchedSource && trackMode === TRACK_MODE.FILE_READY) renderFileCue();
-    return translation;
+    if (!result.text || generation !== trackLoadGeneration) return result.text || '';
+    if (translationSources.get(sourceText) !== 'gemini') {
+      preloadedTranslations.set(sourceText, result.text);
+      translationSources.set(sourceText, result.source || 'standard');
+      scheduleSubtitleTranslationCacheSave();
+      if (sourceText === lastMatchedSource && trackMode === TRACK_MODE.FILE_READY) renderFileCue();
+      else if (sourceText === lastText) {
+        hideLoadingMessage();
+        updateSubtitleContent(sourceText, result.text, false, result.source || 'standard', currentSettings.aiEnabled ? 'preparing' : '');
+      }
+    }
+    return preloadedTranslations.get(sourceText) || result.text;
   });
   inflightTranslations.set(requestKey, request);
   return request;
@@ -2508,7 +2469,8 @@ function displayFileCue(cueIndex, translation = '', playbackTime = null, options
   const cue = preloadedSentencesList[cueIndex];
   if (!cue || cueIndex !== currentCueIndex || trackMode !== TRACK_MODE.FILE_READY) return;
 
-  const cacheKey = `${currentSourceLang}|${currentSettings.lang}|${translation}`;
+  const translationSource = translationSources.get(cue.text) || '';
+  const cacheKey = `${currentSourceLang}|${currentSettings.lang}|${translationSource}|${translation}`;
   const displayPartsChanged = cue.displayPartsCacheKey !== cacheKey;
   if (displayPartsChanged) {
     cue.displayPartsCacheKey = cacheKey;
@@ -2529,7 +2491,31 @@ function displayFileCue(cueIndex, translation = '', playbackTime = null, options
   hideLoadingMessage();
   lastMatchedSource = cue.text;
   lastText = displayPart.source;
-  updateSubtitleContent(displayPart.source, displayPart.translation);
+  const waitingForAi = !displayPart.translation && currentSettings.aiEnabled && currentSettings.showTrans;
+  const aiPreparing = currentSettings.aiEnabled && translationSource !== 'gemini';
+  updateSubtitleContent(
+    displayPart.source,
+    waitingForAi ? '' : displayPart.translation,
+    false,
+    translationSource,
+    aiPreparing ? 'preparing' : 'ready'
+  );
+}
+
+function startVisibleFileAiWindow(cueIndex, generation = trackLoadGeneration) {
+  if (!currentSettings.aiEnabled || !currentSettings.showTrans ||
+      generation !== trackLoadGeneration || cueIndex < 0) return null;
+  const batchStart = Math.floor(cueIndex / AI_TRANSLATION_BATCH_SIZE) * AI_TRANSLATION_BATCH_SIZE;
+  const texts = [];
+  for (let index = batchStart;
+       index < Math.min(batchStart + AI_TRANSLATION_BATCH_SIZE, preloadedSentencesList.length);
+       index += 1) {
+    const text = preloadedSentencesList[index]?.text;
+    if (!text || texts.includes(text) || translationSources.get(text) === 'gemini' ||
+        attemptedAiTranslations.has(getTranslationRequestKey(text, generation))) continue;
+    texts.push(text);
+  }
+  return startAiBatchEnhancement(texts, generation);
 }
 
 function renderFileCue() {
@@ -2563,6 +2549,7 @@ function renderFileCue() {
 
   currentCueIndex = nextCueIndex;
   const cue = preloadedSentencesList[nextCueIndex];
+  if (currentSettings.aiEnabled) startVisibleFileAiWindow(nextCueIndex);
   const translation = preloadedTranslations.get(cue.text);
   if (nextCueIndex === renderedFileCueIndex) {
     if (pendingFileCueIndex === nextCueIndex && !translation) return;
@@ -2584,7 +2571,13 @@ function renderFileCue() {
     return;
   }
 
-  displayFileCue(nextCueIndex, '', playbackTime, { keepPending: true });
+  // Standard/manual subtitles should appear as one bilingual update. Keep the
+  // loading state until the translation is ready instead of painting the
+  // source line first and adding the translation on a later frame. AI mode is
+  // intentionally progressive and keeps its existing preparing indicator.
+  if (currentSettings.aiEnabled) {
+    displayFileCue(nextCueIndex, '', playbackTime, { keepPending: true });
+  }
 
   ensureCueTranslation(cue.text).then(() => {
     if (nextCueIndex !== currentCueIndex || pendingFileCueIndex !== nextCueIndex) return;
@@ -2623,11 +2616,21 @@ function stopFileRenderer() {
   renderedFileCuePartIndex = -1;
 }
 
-async function translateBatch(batch, generation) {
+async function translateBatch(batch, generation, options = {}) {
   if (!batch.length || generation !== trackLoadGeneration) return;
   const delimiter = '\n\n[[[LASDOSCAS_BREAK_9F2D]]]\n\n';
-  const translated = await requestTranslation(batch.join(delimiter));
+  // Start the enhancement request immediately. Google remains the first
+  // visible provider, while Gemini can finish independently and take over.
+  if (currentSettings.aiEnabled && options.enableAi !== false) {
+    startAiBatchEnhancement(batch, generation, delimiter);
+  }
+  const result = await requestTranslation(batch.join(delimiter));
+  const translated = result.text;
   if (generation !== trackLoadGeneration) return;
+
+  // An empty response is a failed request (commonly a 429). Splitting that
+  // batch into individual cues would multiply the same failure many times.
+  if (!translated && currentSettings.aiEnabled) return;
 
   const parts = translated
     ? translated.split(/\s*\[\[\[\s*LASDOSCAS_BREAK_9F2D\s*\]\]\]\s*/i)
@@ -2636,14 +2639,18 @@ async function translateBatch(batch, generation) {
   if (parts.length === batch.length) {
     batch.forEach((sourceText, index) => {
       const translation = parts[index]?.trim();
-      if (translation) preloadedTranslations.set(sourceText, translation);
+      if (translation && translationSources.get(sourceText) !== 'gemini') {
+        preloadedTranslations.set(sourceText, translation);
+        translationSources.set(sourceText, result.source || 'standard');
+        scheduleSubtitleTranslationCacheSave();
+      }
     });
   } else {
     // Google occasionally translates or removes the delimiter. Retry this
     // batch in small groups so cue-to-translation mapping cannot shift.
     for (let i = 0; i < batch.length; i += 3) {
       const group = batch.slice(i, i + 3);
-      await Promise.all(group.map((sourceText) => ensureCueTranslation(sourceText, generation)));
+      await Promise.all(group.map((sourceText) => ensureCueTranslation(sourceText, generation, { skipAi: true })));
       if (generation !== trackLoadGeneration) return;
     }
   }
@@ -2652,6 +2659,7 @@ async function translateBatch(batch, generation) {
   if (visibleTranslation && generation === trackLoadGeneration) {
     renderFileCue();
   }
+
 }
 
 function getAutoTranslationWindowTexts(playhead) {
@@ -2670,11 +2678,71 @@ function getAutoTranslationWindowTexts(playhead) {
   return windowTexts;
 }
 
+function startAiBatchEnhancement(batch, generation, delimiter = '\n\n[[[LASDOSCAS_BREAK_9F2D]]]\n\n') {
+  if (!batch.length || !currentSettings.aiEnabled || generation !== trackLoadGeneration) return null;
+  const aiBatch = batch.filter((sourceText) =>
+    !attemptedAiTranslations.has(getTranslationRequestKey(sourceText, generation))
+  );
+  if (!aiBatch.length) return null;
+  const maxChars = 14000;
+  let chunk = [];
+  let chunkLength = 0;
+  const chunks = [];
+  aiBatch.forEach((sourceText) => {
+    const nextLength = chunkLength + sourceText.length + delimiter.length;
+    if (chunk.length && nextLength > maxChars) {
+      chunks.push(chunk);
+      chunk = [];
+      chunkLength = 0;
+    }
+    chunk.push(sourceText);
+    chunkLength += sourceText.length + delimiter.length;
+  });
+  if (chunk.length) chunks.push(chunk);
+  if (chunks.length > 1) {
+    return Promise.all(chunks.map((part) => startAiBatchEnhancement(part, generation, delimiter)));
+  }
+  const requestKey = `${getTranslationRequestKey(aiBatch.join(delimiter), generation)}|ai-batch`;
+  if (inflightAiTranslations.has(requestKey)) return inflightAiTranslations.get(requestKey);
+  aiBatch.forEach((sourceText) => attemptedAiTranslations.add(getTranslationRequestKey(sourceText, generation)));
+  const request = requestAiTranslation(aiBatch.join(delimiter)).then((result) => {
+    inflightAiTranslations.delete(requestKey);
+    if (!result?.text || generation !== trackLoadGeneration || result.source !== 'gemini') return result;
+    const parts = result.text.split(/\s*\[\[\[\s*LASDOSCAS_BREAK_9F2D\s*\]\]\]\s*/i);
+    if (parts.length !== aiBatch.length) return result;
+    aiBatch.forEach((sourceText, index) => {
+      const translation = parts[index]?.trim();
+      if (translation) applyAiTranslation(sourceText, { text: translation, source: 'gemini' }, generation);
+    });
+    return result;
+  }).catch(() => {
+    inflightAiTranslations.delete(requestKey);
+    return { text: '', source: '' };
+  });
+  inflightAiTranslations.set(requestKey, request);
+  return request;
+}
+
 async function fillAutoTranslationWindow(generation, playhead, windowSequence) {
   const windowTexts = getAutoTranslationWindowTexts(playhead).filter((text) =>
-    !preloadedTranslations.has(text) &&
+    (currentSettings.aiEnabled
+      ? translationSources.get(text) !== 'gemini' &&
+        !attemptedAiTranslations.has(getTranslationRequestKey(text, generation))
+      : !preloadedTranslations.has(text)) &&
     !inflightTranslations.has(getTranslationRequestKey(text, generation))
   );
+
+  if (currentSettings.aiEnabled) {
+    for (let index = 0; index < windowTexts.length; index += AI_TRANSLATION_BATCH_SIZE) {
+      if (generation !== trackLoadGeneration || windowSequence !== autoTranslationWindowSequence ||
+          isOrphaned || !currentSettings.enabled) return;
+      const batch = windowTexts.slice(index, index + AI_TRANSLATION_BATCH_SIZE);
+      startAiBatchEnhancement(batch, generation);
+      const missingStandardTranslations = batch.filter((text) => !preloadedTranslations.has(text));
+      await translateBatch(missingStandardTranslations, generation, { enableAi: false });
+    }
+    return;
+  }
 
   for (let index = 0; index < windowTexts.length; index += AUTO_TRANSLATION_WINDOW_CONCURRENCY) {
     if (generation !== trackLoadGeneration || windowSequence !== autoTranslationWindowSequence ||
@@ -2726,20 +2794,25 @@ async function preloadTranslations(generation) {
     ...preloadedSentencesList.slice(nearestIndex + 24)
   ];
   const sourceSentences = Array.from(new Set(priorityCues.map((cue) => cue.text)));
-  const batchSize = 16;
+  const batchSize = currentSettings.aiEnabled ? AI_TRANSLATION_BATCH_SIZE : 16;
 
-  // Warm the visible window with parallel single-cue requests first. A large
-  // delimiter batch is efficient for the rest of the track, but its response
-  // must not hold the first few on-screen cues hostage.
+  // Keep the first visible cues in one batch as well. Sending six individual
+  // requests before the normal batches needlessly consumes RPM and can create
+  // a burst when a new track is selected.
   const initialCues = sourceSentences
-    .slice(0, INITIAL_TRANSLATION_LOOKAHEAD)
+    .slice(0, currentSettings.aiEnabled ? batchSize : INITIAL_TRANSLATION_LOOKAHEAD)
     .filter((text) =>
       !preloadedTranslations.has(text) &&
       !inflightTranslations.has(getTranslationRequestKey(text, generation))
     );
-  await Promise.all(initialCues.map((text) => ensureCueTranslation(text, generation)));
+  if (currentSettings.aiEnabled) {
+    await translateBatch(initialCues, generation, { enableAi: true });
+  } else {
+    await Promise.all(initialCues.map((text) => ensureCueTranslation(text, generation)));
+  }
 
-  for (let index = 0; index < sourceSentences.length; index += batchSize) {
+  const preloadStartIndex = currentSettings.aiEnabled ? batchSize : 0;
+  for (let index = preloadStartIndex; index < sourceSentences.length; index += batchSize) {
     if (generation !== trackLoadGeneration || isOrphaned || !currentSettings.enabled) return;
     const batch = sourceSentences
       .slice(index, index + batchSize)
@@ -2747,7 +2820,9 @@ async function preloadTranslations(generation) {
         !preloadedTranslations.has(text) &&
         !inflightTranslations.has(getTranslationRequestKey(text, generation))
     );
-    await translateBatch(batch, generation);
+    await translateBatch(batch, generation, {
+      enableAi: currentSettings.aiEnabled
+    });
     if (index + batchSize < sourceSentences.length) {
       await new Promise((resolve) => setTimeout(resolve, PRELOAD_BATCH_DELAY_MS));
     }
@@ -2776,6 +2851,8 @@ async function preloadFullTrack(generation, attempt) {
     trackMode = TRACK_MODE.YOUTUBE_AUTO_TRANSLATE;
     isAutoGenerated = false;
     preloadedTranslations.clear();
+    translationSources.clear();
+    attemptedAiTranslations.clear();
     preloadedSentencesList = [];
     showYouTubeAutoTranslateWarning();
     console.info(
@@ -2832,6 +2909,7 @@ async function preloadFullTrack(generation, attempt) {
 
     resetLiveAsrBuffer();
     preloadedSentencesList = cues;
+    await loadSubtitleTranslationCache();
 
     let youtubeTranslationApplied = false;
     const applyYouTubeTranslation = (translatedData) => {
@@ -2852,7 +2930,9 @@ async function preloadFullTrack(generation, attempt) {
     const warmTranslationData = await waitForTranslationWarmup(youtubeTranslationPromise);
     if (generation !== trackLoadGeneration) return;
     applyYouTubeTranslation(warmTranslationData);
-    if (isAutoGenerated) await warmAutoFileTranslations(generation);
+    if (isAutoGenerated && !currentSettings.aiEnabled) {
+      await warmAutoFileTranslations(generation);
+    }
     if (generation !== trackLoadGeneration) return;
     trackMode = TRACK_MODE.FILE_READY;
 
@@ -2860,9 +2940,18 @@ async function preloadFullTrack(generation, attempt) {
     const video = getPlayerVideoElement();
     const initialCueIndex = findNextCueIndexAtTime(video?.currentTime || 0);
     if (initialCueIndex >= 0 && !preloadedTranslations.has(cues[initialCueIndex].text)) {
-      ensureCueTranslation(cues[initialCueIndex].text, generation);
+      ensureCueTranslation(cues[initialCueIndex].text, generation, { skipAi: currentSettings.aiEnabled });
     }
     startFileRenderer();
+    // AI translation is progressive: render the source cue immediately and
+    // let the background translation fill the translated line later.
+    if (isAutoGenerated && currentSettings.aiEnabled) {
+      warmAutoFileTranslations(generation).catch((error) => {
+        if (generation === trackLoadGeneration) {
+          console.info(`lasDoscas: AI 自动字幕预翻译未完成：${error.message}`);
+        }
+      });
+    }
     if (!isAutoGenerated) preloadTranslations(generation);
 
     youtubeTranslationPromise.then((translatedData) => {
@@ -2925,9 +3014,9 @@ function toggleFullscreenSettings() {
   fullscreenSettingsIframe.style.setProperty('position', 'absolute', 'important');
   fullscreenSettingsIframe.style.setProperty('top', '60px', 'important');
   fullscreenSettingsIframe.style.setProperty('right', '20px', 'important');
-  fullscreenSettingsIframe.style.setProperty('width', '348px', 'important');
+  fullscreenSettingsIframe.style.setProperty('width', '360px', 'important');
 
-  fullscreenSettingsIframe.style.setProperty('height', '500px', 'important'); 
+  fullscreenSettingsIframe.style.setProperty('height', '580px', 'important');
   
   fullscreenSettingsIframe.style.setProperty('border', 'none', 'important');
   fullscreenSettingsIframe.style.setProperty('z-index', '2147483647', 'important'); 
@@ -2955,6 +3044,8 @@ window.addEventListener('message', (event) => {
   
   if (event.data && event.data.action === "lasdoscas_resize") {
     if (fullscreenSettingsIframe) {
+      const requestedHeight = Number(event.data.height);
+      if (!Number.isFinite(requestedHeight) || requestedHeight <= 0) return;
       const moviePlayer = getMoviePlayerElement();
       let maxAllowedHeight = window.innerHeight * 0.9; 
       
@@ -2962,7 +3053,7 @@ window.addEventListener('message', (event) => {
         maxAllowedHeight = moviePlayer.clientHeight * 0.95;
       }
       
-      const finalHeight = Math.min(event.data.height, maxAllowedHeight);
+      const finalHeight = Math.max(120, Math.min(Math.ceil(requestedHeight), maxAllowedHeight));
       
       fullscreenSettingsIframe.style.setProperty('height', `${finalHeight}px`, 'important');
     }

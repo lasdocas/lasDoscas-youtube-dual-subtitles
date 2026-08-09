@@ -93,6 +93,50 @@ body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
   font-size: calc(22px * var(--player-scale, 1) * var(--user-scale, 1)) !important;
 }
 
+.lasdoscas-ai-indicator {
+  position: absolute !important;
+  top: 50% !important;
+  left: 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 40px !important;
+  height: 40px !important;
+  transform: translateY(-50%) !important;
+  user-select: none !important;
+  pointer-events: none !important;
+  overflow: visible !important;
+  z-index: 2147483647 !important;
+}
+
+.lasdoscas-ai-indicator img {
+  position: absolute !important;
+  inset: 4px !important;
+  display: none !important;
+  width: 32px !important;
+  height: 32px !important;
+  object-fit: contain !important;
+  opacity: 1;
+  transform: scale(1);
+  filter: none;
+  z-index: 1 !important;
+}
+
+.custom-subtitle-wrapper:not([data-ai-state]) .lasdoscas-ai-indicator {
+  display: none !important;
+}
+
+.custom-subtitle-wrapper[data-ai-state="preparing"] .lasdoscas-ai-loading-icon {
+  display: block !important;
+}
+
+.custom-subtitle-wrapper[data-ai-state="ready"] .lasdoscas-ai-ready-icon {
+  display: block !important;
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  filter: none !important;
+}
+
 .lasdoscas-copy-button {
   position: absolute !important;
   top: 50% !important;

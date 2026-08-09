@@ -23,6 +23,7 @@ function createBridgeHarness({ hidden = false, href = 'https://www.youtube.com/w
     name: { simpleText: 'English' },
     vssId: '.en'
   };
+  let activeTrack = selectedTrack;
   const moviePlayer = {
     isConnected: true,
     getPlayerResponse: () => ({
@@ -31,7 +32,7 @@ function createBridgeHarness({ hidden = false, href = 'https://www.youtube.com/w
         playerCaptionsTracklistRenderer: { captionTracks: [selectedTrack] }
       }
     }),
-    getOption: () => selectedTrack
+    getOption: () => activeTrack
   };
   const ccButton = {
     isConnected: true,
@@ -81,11 +82,33 @@ function createBridgeHarness({ hidden = false, href = 'https://www.youtube.com/w
     getIntervalCallback: () => intervalCallback,
     getQueryCount: (selector) => queryCounts.get(selector) || 0,
     moviePlayer,
+    setActiveTrack(track) { activeTrack = track; },
     postedMessages,
     window,
     windowListeners
   };
 }
+
+test('stale auto-translation metadata does not hide a selected authored track', () => {
+  const harness = createBridgeHarness();
+  harness.setActiveTrack({
+    ...harness.moviePlayer.getOption(),
+    tlang: 'es',
+    translationLanguage: 'es'
+  });
+  harness.windowListeners.get('message')({
+    source: harness.window,
+    data: {
+      source: 'lasdoscas-player-bridge-v1',
+      type: 'REQUEST_SNAPSHOT',
+      requestId: 'stale-translation'
+    }
+  });
+
+  const snapshot = harness.postedMessages.at(-1).snapshot;
+  assert.equal(snapshot.isAutoTranslated, false);
+  assert.equal(snapshot.selectedTrack.languageCode, 'en');
+});
 
 test('periodic polling pauses while the page is hidden', () => {
   const harness = createBridgeHarness({ hidden: true });

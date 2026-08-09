@@ -23,6 +23,21 @@ const formFields = [
   'fsBgStyle', 'fsBgOpacity'
 ];
 
+const hasSessionStorage = Boolean(chrome.storage.session);
+const aiSessionStorage = chrome.storage.session || chrome.storage.local;
+const aiDefaultSettings = {
+  aiEnabled: false,
+  aiProvider: 'gemini',
+  aiRememberKey: false,
+  aiFallback: true,
+  aiApiKeyConfigured: false
+};
+let aiSettings = { ...aiDefaultSettings };
+let aiKeyValue = '';
+let aiStatusKey = 'aiNotConfigured';
+let aiStatusType = '';
+const AI_KEY_STORAGE_FIELD = 'aiGeminiApiKey';
+
 const toggleFields = ['srcNormalBold', 'srcFsBold', 'transNormalBold', 'transFsBold'];
 
 // 面板 UI 自身的显示语言字典：只有中/英/西三种，按需求不要在这里增加更多语言。
@@ -43,6 +58,35 @@ const i18nDict = {
     normalSize: '字号（默认视图及影院模式）',
     fsSize: '字号（全屏）',
     fsBgOpacityLabel: '背景透明度',
+    aiSection: 'AI 增强',
+    aiProvider: '服务商',
+    aiGemini: 'Google Gemini',
+    aiApiKey: 'API Key',
+    aiKeyPlaceholder: '粘贴 Gemini API Key',
+    aiSavedKeyPlaceholder: 'Key 已保存，输入新 Key 可替换',
+    aiStorageHint: '当前浏览器会话内保存，不会发送给 YouTube',
+    aiStorageRememberedHint: '已保存在此设备，关闭浏览器后仍会保留',
+    aiRememberKey: '关闭浏览器后仍保留 Key',
+    aiFallback: 'AI 不可用时使用标准翻译',
+    aiTest: '测试连接',
+    aiClear: '清除 Key',
+    aiApply: '应用 Key',
+    aiShow: '显示',
+    aiHide: '隐藏',
+    aiNotConfigured: '未配置',
+    aiConfigured: '已配置',
+    aiConfiguredSession: '已配置：正在使用本次浏览器会话保存的 Key',
+    aiConfiguredDevice: '已配置：正在使用此设备保存的 Key',
+    aiTesting: '测试中…',
+    aiTestSuccess: '连接成功，Key 可用',
+    aiApplied: 'Key 已应用，AI 增强已开启',
+    aiMissingKey: '请先输入 API Key',
+    aiInvalidKey: 'Key 无效或没有访问权限',
+    aiRateLimited: 'Gemini 返回 429：额度已用完或暂时限流',
+    aiNetworkError: '网络连接失败',
+    aiTimeout: '连接超时，请检查网络或代理设置',
+    aiExtensionError: '扩展后台未响应，请在 chrome://extensions 重新加载扩展',
+    aiRequestFailed: '连接失败',
     resetBtn: '重置'
   },
   'en': {
@@ -59,6 +103,35 @@ const i18nDict = {
     normalSize: 'Font size (default view and theater mode)',
     fsSize: 'Font size (fullscreen)',
     fsBgOpacityLabel: 'Background opacity',
+    aiSection: 'AI enhancement',
+    aiProvider: 'Provider',
+    aiGemini: 'Google Gemini',
+    aiApiKey: 'API key',
+    aiKeyPlaceholder: 'Paste your Gemini API key',
+    aiSavedKeyPlaceholder: 'Key saved; enter a new key to replace it',
+    aiStorageHint: 'Saved for this browser session, never sent to YouTube',
+    aiStorageRememberedHint: 'Saved on this device and retained after closing the browser',
+    aiRememberKey: 'Keep the key after closing the browser',
+    aiFallback: 'Use standard translation if AI is unavailable',
+    aiTest: 'Test connection',
+    aiClear: 'Clear key',
+    aiApply: 'Apply key',
+    aiShow: 'Show',
+    aiHide: 'Hide',
+    aiNotConfigured: 'Not configured',
+    aiConfigured: 'Configured',
+    aiConfiguredSession: 'Configured: using the key saved for this browser session',
+    aiConfiguredDevice: 'Configured: using the key saved on this device',
+    aiTesting: 'Testing…',
+    aiTestSuccess: 'Connected, key is valid',
+    aiApplied: 'Key applied; AI enhancement is on',
+    aiMissingKey: 'Enter an API key first',
+    aiInvalidKey: 'Invalid key or access denied',
+    aiRateLimited: 'Gemini returned 429: quota exhausted or temporarily rate-limited',
+    aiNetworkError: 'Network connection failed',
+    aiTimeout: 'Connection timed out; check your network or proxy',
+    aiExtensionError: 'Extension background did not respond; reload it at chrome://extensions',
+    aiRequestFailed: 'Connection failed',
     resetBtn: 'Reset'
   },
   'es': {
@@ -75,6 +148,35 @@ const i18nDict = {
     normalSize: 'Tamaño de fuente (predeterminado y cine)',
     fsSize: 'Tamaño de fuente (pantalla completa)',
     fsBgOpacityLabel: 'Opacidad del fondo',
+    aiSection: 'Mejora con IA',
+    aiProvider: 'Proveedor',
+    aiGemini: 'Google Gemini',
+    aiApiKey: 'Clave API',
+    aiKeyPlaceholder: 'Pega tu clave API de Gemini',
+    aiSavedKeyPlaceholder: 'Clave guardada; introduce otra para reemplazarla',
+    aiStorageHint: 'Guardada durante esta sesión, nunca se envía a YouTube',
+    aiStorageRememberedHint: 'Guardada en este dispositivo incluso al cerrar el navegador',
+    aiRememberKey: 'Conservar la clave al cerrar el navegador',
+    aiFallback: 'Usar traducción estándar si la IA no está disponible',
+    aiTest: 'Probar conexión',
+    aiClear: 'Borrar clave',
+    aiApply: 'Aplicar clave',
+    aiShow: 'Mostrar',
+    aiHide: 'Ocultar',
+    aiNotConfigured: 'Sin configurar',
+    aiConfigured: 'Configurada',
+    aiConfiguredSession: 'Configurada: usando la clave guardada para esta sesión',
+    aiConfiguredDevice: 'Configurada: usando la clave guardada en este dispositivo',
+    aiTesting: 'Probando…',
+    aiTestSuccess: 'Conectado, clave válida',
+    aiApplied: 'Clave aplicada; la mejora con IA está activa',
+    aiMissingKey: 'Introduce primero una clave API',
+    aiInvalidKey: 'Clave no válida o acceso denegado',
+    aiRateLimited: 'Gemini devolvió 429: cuota agotada o límite temporal',
+    aiNetworkError: 'Falló la conexión de red',
+    aiTimeout: 'La conexión agotó el tiempo; revisa tu red o proxy',
+    aiExtensionError: 'El fondo de la extensión no respondió; recárgala en chrome://extensions',
+    aiRequestFailed: 'Falló la conexión',
     resetBtn: 'Restablecer'
   }
 };
@@ -170,7 +272,220 @@ document.addEventListener('DOMContentLoaded', () => {
     bindColorPresetsEvents();
     bindFooterEvents();
   });
+
+  loadAiSettings();
 });
+
+function loadAiSettings() {
+  const fields = Object.keys(aiDefaultSettings);
+  chrome.storage.local.get([...fields, AI_KEY_STORAGE_FIELD], (localData) => {
+    fields.forEach((field) => {
+      if (localData[field] !== undefined) aiSettings[field] = localData[field];
+    });
+
+    aiSessionStorage.get(AI_KEY_STORAGE_FIELD, (sessionData) => {
+      const rememberedKey = String(localData[AI_KEY_STORAGE_FIELD] || '').trim();
+      const sessionKey = String(sessionData[AI_KEY_STORAGE_FIELD] || '').trim();
+      aiKeyValue = aiSettings.aiRememberKey ? rememberedKey : sessionKey;
+      aiSettings.aiApiKeyConfigured = Boolean(aiKeyValue);
+      aiStatusKey = aiKeyValue
+        ? (aiSettings.aiRememberKey ? 'aiConfiguredDevice' : 'aiConfiguredSession')
+        : 'aiNotConfigured';
+      applyAiSettingsToUI();
+      bindAiEvents();
+    });
+  });
+}
+
+function applyAiSettingsToUI() {
+  document.getElementById('aiEnabled').checked = Boolean(aiSettings.aiEnabled);
+  document.getElementById('aiProvider').value = aiSettings.aiProvider;
+  document.getElementById('aiRememberKey').checked = Boolean(aiSettings.aiRememberKey);
+  document.getElementById('aiFallback').checked = Boolean(aiSettings.aiFallback);
+  const keyInput = document.getElementById('aiApiKey');
+  keyInput.value = '';
+  updateAiKeyStorageUI();
+  setAiStatus(aiStatusKey, aiStatusType);
+}
+
+function updateAiKeyStorageUI() {
+  const dict = i18nDict[currentUiLang] || i18nDict.en;
+  const keyInput = document.getElementById('aiApiKey');
+  const storageHint = document.querySelector('.ai-storage-hint');
+  if (keyInput) {
+    keyInput.placeholder = aiKeyValue
+      ? dict.aiSavedKeyPlaceholder
+      : dict.aiKeyPlaceholder;
+  }
+  if (storageHint) {
+    storageHint.textContent = aiSettings.aiRememberKey
+      ? dict.aiStorageRememberedHint
+      : dict.aiStorageHint;
+  }
+}
+
+function setAiStatus(messageKey, type = '') {
+  aiStatusKey = messageKey;
+  aiStatusType = type;
+  const status = document.getElementById('aiStatus');
+  const dict = i18nDict[currentUiLang] || i18nDict.en;
+  status.textContent = dict[messageKey] || '';
+  status.className = `ai-status${type ? ` ${type}` : ''}`;
+}
+
+function saveAiSettings(changes) {
+  Object.assign(aiSettings, changes);
+  chrome.storage.local.set(changes);
+}
+
+function persistAiKey(onComplete) {
+  // Chrome versions with storage.session keep non-remembered keys out of disk.
+  // The local fallback is only for older browsers that do not expose session storage.
+  const useLocalStorage = aiSettings.aiRememberKey || !hasSessionStorage;
+  const targetStorage = useLocalStorage ? chrome.storage.local : aiSessionStorage;
+  const otherStorage = useLocalStorage ? aiSessionStorage : chrome.storage.local;
+  const finish = () => {
+    if (onComplete) onComplete();
+  };
+
+  if (otherStorage !== targetStorage) otherStorage.remove(AI_KEY_STORAGE_FIELD);
+  if (aiKeyValue) targetStorage.set({ [AI_KEY_STORAGE_FIELD]: aiKeyValue }, finish);
+  else targetStorage.remove(AI_KEY_STORAGE_FIELD, finish);
+}
+
+function bindAiEvents() {
+  const details = document.getElementById('aiSettingsArea');
+  const summary = details.querySelector('.ai-summary');
+  const enabled = document.getElementById('aiEnabled');
+  const enabledSwitch = enabled.closest('.switch');
+  const keyInput = document.getElementById('aiApiKey');
+  const toggleKey = document.getElementById('aiToggleKey');
+  const rememberKey = document.getElementById('aiRememberKey');
+  const fallback = document.getElementById('aiFallback');
+  const testButton = document.getElementById('aiTestConnection');
+  const applyButton = document.getElementById('aiApplyKey');
+  const scrollArea = document.getElementById('settingsScrollArea');
+
+  const updateAiExpansionLayout = () => {
+    document.body.classList.toggle('ai-expanded', details.open);
+    if (!details.open) {
+      scrollArea.scrollTo({ top: 0, behavior: 'auto' });
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const scrollRect = scrollArea.getBoundingClientRect();
+        const detailsRect = details.getBoundingClientRect();
+        scrollArea.scrollTo({
+          top: Math.max(0, scrollArea.scrollTop + detailsRect.top - scrollRect.top - 8),
+          behavior: 'smooth'
+        });
+      });
+    });
+  };
+  details.open = enabled.checked;
+  summary.addEventListener('click', (event) => {
+    if (!event.target.closest('.switch')) event.preventDefault();
+  });
+  details.addEventListener('toggle', updateAiExpansionLayout);
+  updateAiExpansionLayout();
+
+  enabledSwitch.addEventListener('click', (event) => event.stopPropagation());
+  enabled.addEventListener('change', () => {
+    saveAiSettings({ aiEnabled: enabled.checked });
+    details.open = enabled.checked;
+  });
+
+  keyInput.addEventListener('input', () => {
+    aiKeyValue = keyInput.value.trim();
+    updateAiKeyStorageUI();
+    setAiStatus(aiKeyValue ? 'aiConfigured' : 'aiNotConfigured');
+  });
+  keyInput.addEventListener('change', () => persistAiKey());
+
+  toggleKey.addEventListener('click', () => {
+    const show = keyInput.type === 'password';
+    if (show && !keyInput.value && aiKeyValue) keyInput.value = aiKeyValue;
+    keyInput.type = show ? 'text' : 'password';
+    toggleKey.textContent = (i18nDict[currentUiLang] || i18nDict.en)[show ? 'aiHide' : 'aiShow'];
+  });
+
+  rememberKey.addEventListener('change', () => {
+    saveAiSettings({ aiRememberKey: rememberKey.checked });
+    persistAiKey();
+    updateAiKeyStorageUI();
+    if (aiKeyValue) {
+      setAiStatus(rememberKey.checked ? 'aiConfiguredDevice' : 'aiConfiguredSession');
+    }
+  });
+
+  fallback.addEventListener('change', () => {
+    saveAiSettings({ aiFallback: fallback.checked });
+  });
+
+  document.getElementById('aiClearKey').addEventListener('click', () => {
+    aiKeyValue = '';
+    keyInput.value = '';
+    keyInput.type = 'password';
+    chrome.storage.local.remove(AI_KEY_STORAGE_FIELD);
+    aiSessionStorage.remove(AI_KEY_STORAGE_FIELD);
+    updateAiKeyStorageUI();
+    setAiStatus('aiNotConfigured');
+  });
+
+  applyButton.addEventListener('click', () => {
+    if (!aiKeyValue) {
+      setAiStatus('aiMissingKey', 'error');
+      keyInput.focus();
+      return;
+    }
+
+    applyButton.disabled = true;
+    persistAiKey(() => {
+      applyButton.disabled = false;
+      enabled.checked = true;
+      details.open = true;
+      saveAiSettings({ aiEnabled: true });
+      setAiStatus('aiApplied', 'success');
+    });
+  });
+
+  testButton.addEventListener('click', () => {
+    if (!aiKeyValue) {
+      setAiStatus('aiMissingKey', 'error');
+      keyInput.focus();
+      return;
+    }
+
+    persistAiKey();
+    testButton.disabled = true;
+    setAiStatus('aiTesting');
+    chrome.runtime.sendMessage({ action: 'test_gemini_key', apiKey: aiKeyValue }, (response) => {
+      testButton.disabled = false;
+      if (chrome.runtime.lastError) {
+        setAiStatus('aiExtensionError', 'error');
+        return;
+      }
+      if (response?.ok) {
+        setAiStatus('aiTestSuccess', 'success');
+        return;
+      }
+      const errorKeys = {
+        missing_key: 'aiMissingKey',
+        invalid_key: 'aiInvalidKey',
+        rate_limited: 'aiRateLimited',
+        network_error: 'aiNetworkError',
+        timeout: 'aiTimeout'
+      };
+      const statusSuffix = response?.status ? ` (${response.status})` : '';
+      setAiStatus(errorKeys[response?.code] || 'aiRequestFailed', 'error');
+      if (statusSuffix) {
+        const status = document.getElementById('aiStatus');
+        status.textContent += statusSuffix;
+      }
+    });
+  });
+}
 
 function updateCCAvailabilityUI(ccAvailable) {
   isCCAvailable = Boolean(ccAvailable);
@@ -302,6 +617,20 @@ function applyI18n(lang) {
     const key = el.getAttribute('data-i18n'); 
     if (dict[key]) el.textContent = dict[key]; 
   });
+
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    if (dict[key]) el.setAttribute('placeholder', dict[key]);
+  });
+
+  if (document.getElementById('aiStatus')) setAiStatus(aiStatusKey, aiStatusType);
+  if (document.getElementById('aiApiKey')) updateAiKeyStorageUI();
+  const keyToggle = document.getElementById('aiToggleKey');
+  if (keyToggle) {
+    keyToggle.textContent = (document.getElementById('aiApiKey')?.type === 'text')
+      ? (dict.aiHide || 'Hide')
+      : (dict.aiShow || 'Show');
+  }
 
   const toggleBtn = document.getElementById('uiLangToggleBtn');
   if (toggleBtn) {
@@ -458,30 +787,36 @@ function bindFooterEvents() {
 
 }
 
-window.addEventListener('pagehide', flushPendingSettings);
+window.addEventListener('pagehide', () => {
+  flushPendingSettings();
+  persistAiKey();
+});
 
 if (window.self !== window.top) {
   document.addEventListener('DOMContentLoaded', () => {
-
     if (!document.body) return;
 
-    const resizeObserver = new ResizeObserver(() => {
-      const currentHeight = document.documentElement.scrollHeight;
+    const parentOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) || '*';
+    let resizeFrame = null;
+    const notifyParentResize = () => {
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null;
+        // scrollHeight is never smaller than the iframe viewport. Measure the
+        // final content edge so a collapsed details element can shrink an iframe
+        // that was previously expanded.
+        window.parent.postMessage({
+          action: 'lasdoscas_resize',
+          height: 580
+        }, parentOrigin);
+      });
+    };
 
-      // 安全性：明确指定目标 origin，而不是用通配符 "*"。
-      // location.ancestorOrigins[0] 是父窗口（即 youtube.com 页面）的 origin，
-      // 由浏览器提供、无法被内容脚本伪造，比手写死一个固定域名更稳妥
-      // （因为 manifest 匹配的是 *://*.youtube.com/*，父窗口也可能是
-      // m.youtube.com 等其它子域名）。极少数不支持 ancestorOrigins 的环境下
-      // 才退回到 "*"。
-      const parentOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) || '*';
-
-      window.parent.postMessage({ 
-        action: "lasdoscas_resize", 
-        height: currentHeight 
-      }, parentOrigin);
-    });
+    const resizeObserver = new ResizeObserver(notifyParentResize);
     
-    resizeObserver.observe(document.body);
+    resizeObserver.observe(document.getElementById('popupContent'));
+    document.getElementById('aiSettingsArea')?.addEventListener('toggle', notifyParentResize);
+    window.addEventListener('load', notifyParentResize, { once: true });
+    notifyParentResize();
   });
 }

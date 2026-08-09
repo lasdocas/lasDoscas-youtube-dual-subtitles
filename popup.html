@@ -3,16 +3,17 @@
 <head>
   <meta charset="utf-8">
   <style>
-    html { background: transparent; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; width: 320px; padding: 10px 14px; margin: 0; background: rgba(249,249,249,0.90); color: #222; transition: background 0.2s, color 0.2s; }
+    html { width: 360px; max-width: 360px; overflow-x: hidden; background: transparent; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; width: 360px; max-width: 360px; height: 580px; max-height: 580px; overflow: hidden; padding: 10px 0; margin: 0; background: rgba(249,249,249,0.90); color: #222; transition: background 0.2s, color 0.2s; }
+    #popupContent { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+    #settingsScrollArea { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: hidden; padding: 0 12px 0 16px; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #bababa transparent; }
+    body.ai-expanded #settingsScrollArea { overflow-y: auto; }
     
-    body::-webkit-scrollbar {
-      display: none;
-    }
-    body {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
+    #settingsScrollArea::-webkit-scrollbar { width: 6px; }
+    #settingsScrollArea::-webkit-scrollbar-track { background: transparent; }
+    #settingsScrollArea::-webkit-scrollbar-thumb { background: #bababa; border-radius: 3px; }
+    #settingsScrollArea::-webkit-scrollbar-thumb:hover { background: #999; }
     
     .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
     .top-bar-left { display: flex; gap: 6px; }
@@ -31,9 +32,12 @@
     .setting-item { margin-bottom: 8px; display: flex; flex-direction: column; }
     .setting-item > label { font-size: 12px; color: #666; margin-bottom: 4px; display: block; }
     
-    select, input[type="text"] { padding: 5px 8px; border: none; border-radius: 4px; font-size: 12px; background: #ededed; color: #333; box-sizing: border-box; width: 100%; transition: all 0.2s; }
+    select, input[type="text"], input[type="password"] { padding: 5px 8px; border: none; border-radius: 4px; font-size: 12px; background: #ededed; color: #333; box-sizing: border-box; width: 100%; transition: all 0.2s; }
     input[type="text"] { font-family: monospace; text-align: center; }
-    input[type="text"]:focus, select:focus { outline: none !important; }
+    input[type="password"] { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; text-align: left; }
+    #aiApiKey { text-align: left; }
+    #aiApiKey::placeholder { font-size: 11px; }
+    input[type="text"]:focus, input[type="password"]:focus, select:focus { outline: none !important; }
 
     input[type="range"] { 
       -webkit-appearance: none; appearance: none;
@@ -73,7 +77,7 @@
     .switch.disabled { cursor: not-allowed; }
     .switch input:disabled + .slider { cursor: not-allowed; opacity: 0.45; }
 
-    .action-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+    .action-footer { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: center; margin-top: 4px; padding: 0 16px; }
     .action-footer button { 
       font-family: inherit; box-sizing: border-box; height: 26px; min-width: 50px; padding: 0 14px; 
       border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; 
@@ -92,13 +96,46 @@
     #opacityWrapper { transition: opacity 0.3s ease; }
     #opacityWrapper.disabled { opacity: 0.3; pointer-events: none; }
 
+    #aiSettingsArea { border-top: 1px solid #eaeaea; margin-top: 6px; padding-top: 6px; }
+    .ai-summary { min-width: 0; margin-bottom: 0; cursor: default; list-style: none; gap: 0; }
+    .ai-summary > div { display: flex; flex: 1 1 auto; align-items: center; min-width: 0; }
+    .ai-summary::-webkit-details-marker { display: none; }
+    .ai-title-badge { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; min-height: 20px; padding: 0; background: transparent; color: #176b57; font-size: 12px; font-weight: 700; letter-spacing: 0; }
+    .ai-title-badge::before { content: ''; width: 3px; height: 14px; border-radius: 2px; background: #42cfa5; }
+    .ai-description, .ai-storage-hint { color: #777; font-size: 11px; line-height: 1.35; margin: 0 0 7px; }
+    .ai-settings-content { margin: 7px 0 5px; padding: 9px 10px 8px; border-radius: 8px; background: rgba(99, 230, 190, 0.1); color: #00382d; line-height: 1.5; }
+    .ai-settings-content .setting-item, .ai-settings-content .ai-check-row, .ai-settings-content .ai-actions { margin-top: 8px !important; margin-bottom: 8px !important; }
+    .ai-settings-content .setting-item:first-child { margin-top: 0 !important; }
+    .ai-settings-content .ai-status { margin-top: 4px; }
+    .ai-settings-content .ai-description, .ai-settings-content .ai-storage-hint { line-height: 1.5; margin-bottom: 8px; }
+    .ai-settings-content .ai-check-row { color: #064d3d; }
+    .ai-settings-content .ai-key-action, .ai-settings-content .ai-secondary-action { background: rgba(255,255,255,0.68); color: #064d3d; }
+    .ai-settings-content .ai-key-action:hover, .ai-settings-content .ai-secondary-action:hover { background: rgba(255,255,255,0.86); }
+    .ai-settings-content #aiApplyKey { background: #176b57; color: #fff; }
+    .ai-settings-content #aiApplyKey:hover { background: #0f5b49; }
+    .ai-summary .switch { flex: 0 0 auto; margin-left: 7px; }
+    .ai-key-row { display: flex; min-width: 0; max-width: 100%; gap: 6px; align-items: center; }
+    .ai-key-row input { min-width: 0; flex: 1 1 auto; height: 28px; }
+    .ai-key-row button { flex: 0 0 auto; }
+    #aiToggleKey { width: 58px; min-width: 58px; padding: 0 6px; text-align: center; }
+    .ai-key-action, .ai-secondary-action { display: inline-flex; align-items: center; justify-content: center; height: 28px; min-height: 28px; border: none; border-radius: 4px; background: #ededed; color: #444; font: inherit; font-size: 11px; line-height: 1; padding: 0 8px; cursor: pointer; white-space: nowrap; }
+    .ai-key-action:hover, .ai-secondary-action:hover { background: #e0e0e0; }
+    .ai-actions { display: flex; align-items: center; gap: 6px; margin: 9px 0; }
+    #aiApplyKey { margin-left: auto; background: #63e6be; color: #002B36; font-weight: 600; }
+    #aiApplyKey:hover { background: #4ed9ad; }
+    .ai-status { min-height: 15px; color: #777; font-size: 11px; }
+    .ai-status.success { color: #16805c; }
+    .ai-status.error { color: #b44b4b; }
+    .ai-check-row { display: flex; align-items: center; gap: 6px; margin: 6px 0; color: #666; font-size: 11px; line-height: 1.3; }
+    .ai-check-row input { margin: 0; accent-color: #63e6be; }
+
     body.dark-theme { background: rgba(26,26,26,0.90); color: #f0f0f0; }
     body.dark-theme .top-btn { color: #bbb; background: #262626; }
     body.dark-theme .top-btn:hover { background: #363636; }
     body.dark-theme .divider { background: #2a2a2a; }
     body.dark-theme .section-title { color: #aaaaaa; }
     body.dark-theme .main-brand { color: #ffffff; }
-    body.dark-theme select, body.dark-theme input[type="text"] { background: #262626; color: #ffffff; }
+    body.dark-theme select, body.dark-theme input[type="text"], body.dark-theme input[type="password"] { background: #262626; color: #ffffff; }
     body.dark-theme .bold-toggle-btn { background: #262626; color: #ffffff; }
     body.dark-theme .bold-toggle-btn:hover { background: #363636; }
     body.dark-theme .bold-toggle-btn.active { background: #63e6be; color: #002B36; box-shadow: inset 0 1px 3px rgba(0,0,0,0.4); }
@@ -141,11 +178,27 @@
     background-color: #666666;
     }
     body.dark-theme select::-webkit-scrollbar-thumb:hover {
-    background-color: #888888;
+      background-color: #888888;
     }
+    body.dark-theme #settingsScrollArea { scrollbar-color: #666 transparent; }
+    body.dark-theme #settingsScrollArea::-webkit-scrollbar-thumb { background: #666; }
+    body.dark-theme #settingsScrollArea::-webkit-scrollbar-thumb:hover { background: #888; }
+    body.dark-theme #aiSettingsArea { border-top-color: #2a2a2a; }
+    body.dark-theme .ai-title-badge { background: transparent; color: #8ce8cc; }
+    body.dark-theme .ai-title-badge::before { background: #63e6be; }
+    body.dark-theme .ai-settings-content { color: #00382d; }
+    body.dark-theme .ai-settings-content .ai-check-row { color: #eafff8; }
+    body.dark-theme .ai-description, body.dark-theme .ai-storage-hint, body.dark-theme .ai-status, body.dark-theme .ai-check-row { color: #aaa; }
+    body.dark-theme .ai-key-action, body.dark-theme .ai-secondary-action { background: #262626; color: #eee; }
+    body.dark-theme .ai-key-action:hover, body.dark-theme .ai-secondary-action:hover { background: #363636; }
+    body.dark-theme .ai-status.success { color: #63e6be; }
+    body.dark-theme .ai-status.error { color: #ff9999; }
   </style>
 </head>
 <body>
+
+  <div id="popupContent">
+  <div id="settingsScrollArea">
 
   <div class="top-bar">
     <div class="top-bar-left">
@@ -342,9 +395,57 @@
     </div>
   </div>
 
+  <details id="aiSettingsArea">
+    <summary class="section-header ai-summary" tabindex="-1">
+      <div>
+        <div class="ai-title-badge" data-i18n="aiSection">AI 增强</div>
+      </div>
+      <label class="switch" title="Toggle AI enhancement">
+        <input type="checkbox" id="aiEnabled">
+        <span class="slider"></span>
+      </label>
+    </summary>
+
+    <div class="ai-settings-content">
+    <div class="setting-item" style="margin-top: 8px; margin-bottom: 6px;">
+      <label for="aiProvider" data-i18n="aiProvider">服务商</label>
+      <select id="aiProvider">
+        <option value="gemini" data-i18n="aiGemini">Google Gemini</option>
+      </select>
+    </div>
+
+    <div class="setting-item" style="margin-bottom: 4px;">
+      <label for="aiApiKey" data-i18n="aiApiKey">API Key</label>
+      <div class="ai-key-row">
+        <input type="password" id="aiApiKey" autocomplete="off" spellcheck="false" data-i18n-placeholder="aiKeyPlaceholder" placeholder="粘贴 Gemini API Key">
+        <button type="button" id="aiToggleKey" class="ai-key-action" data-i18n="aiShow">显示</button>
+      </div>
+      <p class="ai-storage-hint" data-i18n="aiStorageHint">仅保存在此浏览器中，不会发送给 YouTube</p>
+    </div>
+
+    <label class="ai-check-row">
+      <input type="checkbox" id="aiRememberKey">
+      <span data-i18n="aiRememberKey">在此设备记住 Key</span>
+    </label>
+    <label class="ai-check-row">
+      <input type="checkbox" id="aiFallback">
+      <span data-i18n="aiFallback">AI 不可用时使用标准翻译</span>
+    </label>
+
+    <div class="ai-actions">
+      <button type="button" id="aiTestConnection" class="ai-secondary-action" data-i18n="aiTest">测试连接</button>
+      <button type="button" id="aiClearKey" class="ai-secondary-action" data-i18n="aiClear">清除 Key</button>
+      <button type="button" id="aiApplyKey" class="ai-secondary-action" data-i18n="aiApply">应用 Key</button>
+    </div>
+    <div id="aiStatus" class="ai-status" role="status" aria-live="polite"></div>
+    </div>
+  </details>
+  </div>
+
   <div class="action-footer">
     <button type="button" id="btnReset" data-i18n="resetBtn">重置</button>
     <button type="button" id="btnCancel" data-i18n="cancelBtn">关闭</button>
+  </div>
   </div>
 
   <script src="popup.js"></script>

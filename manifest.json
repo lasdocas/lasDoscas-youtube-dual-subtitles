@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "3.7.6",
+  "version": "4.0.0",
   "description": "__MSG_extDesc__",
   "default_locale": "en",
   "author": "lasdocas",
   "permissions": ["storage"],
   "host_permissions": [
     "https://translate.googleapis.com/*",
+    "https://generativelanguage.googleapis.com/*",
     "*://*.youtube.com/*"
   ],
   "web_accessible_resources": [
@@ -20,7 +21,9 @@
         "icon48.png",
         "copy48.svg",
         "copyfull48.svg",
-        "check48.svg"
+        "check48.svg",
+        "ai.svg",
+        "ai_loading.svg"
       ],
       "matches": ["*://*.youtube.com/*"]
     }
@@ -59,7 +62,7 @@
     },
     {
       "matches": ["*://*.youtube.com/*"],
-      "js": ["content.js"],
+      "js": ["localization.js", "content.js"],
       "css": ["style.css"],
       "run_at": "document_idle",
       "world": "ISOLATED"

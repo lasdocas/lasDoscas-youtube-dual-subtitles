@@ -8,6 +8,14 @@ const contentSource = fs.readFileSync(
   path.resolve(__dirname, '..', 'content.js'),
   'utf8'
 ).replace(/\r\n/g, '\n');
+const styleSource = fs.readFileSync(
+  path.resolve(__dirname, '..', 'style.css'),
+  'utf8'
+).replace(/\r\n/g, '\n');
+const popupSource = fs.readFileSync(
+  path.resolve(__dirname, '..', 'popup.html'),
+  'utf8'
+).replace(/\r\n/g, '\n');
 
 function extractBetween(startMarker, endMarker) {
   const start = contentSource.indexOf(startMarker);
@@ -149,4 +157,78 @@ test('RTL source languages are identified explicitly', () => {
   for (const language of ['en', 'es', 'zh-CN']) {
     assert.equal(isRtlLanguage(language), false);
   }
+});
+
+test('default Google path retains auto-translation and lookahead gates', () => {
+  assert.match(contentSource, /trackMode === TRACK_MODE\.YOUTUBE_AUTO_TRANSLATE/);
+  assert.match(contentSource, /currentSettings\.aiEnabled \? batchSize : INITIAL_TRANSLATION_LOOKAHEAD/);
+});
+
+test('wrapper scaling uses named layout constants', () => {
+  assert.match(contentSource, /const BASE_PLAYER_WIDTH_PX = 850/);
+  assert.match(contentSource, /const PLAYER_SCALE_EXPONENT = 0\.5/);
+  assert.match(contentSource, /const MIN_PLAYER_SCALE = 0\.75/);
+  assert.match(contentSource, /const MAX_PLAYER_SCALE = 1\.4/);
+  assert.match(contentSource, /targetWidth \/ BASE_PLAYER_WIDTH_PX/);
+  assert.doesNotMatch(contentSource, /targetWidth \/ 850/);
+});
+
+test('manual subtitle downloads use the same bounded fetch path with AI disabled', () => {
+  assert.match(contentSource, /const CAPTION_FETCH_TIMEOUT_MS = 8000/);
+  assert.doesNotMatch(contentSource, /if \(!currentSettings\.aiEnabled\) \{\s*const response = await fetch\(url\.toString\(\), \{ signal, credentials: 'include' \}\)/);
+  assert.match(contentSource, /const timeoutId = setTimeout\(\(\) => timeoutController\.abort\(\), CAPTION_FETCH_TIMEOUT_MS\)/);
+  assert.match(contentSource, /trackMode = terminalMode;[\s\S]*?hideLoadingMessage\(\);/);
+});
+
+test('AI enhancement keeps Google as the immediate translation provider', () => {
+  assert.match(contentSource, /function requestTranslation[\s\S]*sendTranslationRequest\('translate', text, lang\)/);
+  assert.match(contentSource, /function requestAiTranslation[\s\S]*sendTranslationRequest\('translate_ai', text, lang\)/);
+  assert.match(contentSource, /startAiEnhancement\(currentText, generation\);[\s\S]*await requestTranslation\(currentText, targetLang\)/);
+});
+
+test('manual subtitle rendering waits for the standard translation before painting a cue', () => {
+  const renderFileCueBody = contentSource.slice(
+    contentSource.indexOf('function renderFileCue()'),
+    contentSource.indexOf('function startFileRenderer()', contentSource.indexOf('function renderFileCue()'))
+  );
+  assert.match(renderFileCueBody, /if \(currentSettings\.aiEnabled\) \{[\s\S]*displayFileCue\(nextCueIndex, '', playbackTime, \{ keepPending: true \}\);[\s\S]*\}/);
+  assert.doesNotMatch(
+    renderFileCueBody,
+    /displayFileCue\(nextCueIndex, '', playbackTime, \{ keepPending: true \}\);\s*\n\s*ensureCueTranslation/
+  );
+});
+
+test('AI results can replace standard translations without late Google overwrite', () => {
+  assert.match(contentSource, /function applyAiTranslation[\s\S]*translationSources\.set\(sourceText, 'gemini'\)/);
+  assert.match(contentSource, /if \(translationSources\.get\(sourceText\) !== 'gemini'\)[\s\S]*translationSources\.set\(sourceText, result\.source \|\| 'standard'\)/);
+});
+
+test('AI requests are deduplicated and batch-preload is capped', () => {
+  assert.match(contentSource, /const attemptedAiTranslations = new Set\(\)/);
+  assert.match(contentSource, /if \(attemptedAiTranslations\.has\(requestKey\)\) return null/);
+  assert.match(contentSource, /const AI_TRANSLATION_BATCH_SIZE = 48/);
+});
+
+test('AI indicator uses explicit preparing and ready states', () => {
+  assert.match(contentSource, /chrome\.runtime\.getURL\('ai\.svg'\)/);
+  assert.match(contentSource, /chrome\.runtime\.getURL\('ai_loading\.svg'\)/);
+  assert.match(contentSource, /data-ai-state/);
+  assert.match(contentSource, /translationSource === 'gemini' \? 'ready' : 'preparing'/);
+  assert.match(styleSource, /\.lasdoscas-ai-indicator img[\s\S]*width: 32px !important;[\s\S]*height: 32px !important;/);
+  assert.match(styleSource, /\[data-ai-state="preparing"\] \.lasdoscas-ai-loading-icon \{\s*display: block !important;\s*\}/);
+  assert.match(styleSource, /\[data-ai-state="ready"\] \.lasdoscas-ai-ready-icon[\s\S]*display: block !important;/);
+  assert.doesNotMatch(styleSource, /lasdoscas-ai-(?:preparing|halo)/);
+  assert.doesNotMatch(styleSource, /\.lasdoscas-ai-indicator::after/);
+  assert.match(styleSource, /\.lasdoscas-ai-indicator img \{[\s\S]*opacity: 1;[\s\S]*transform: scale\(1\);/);
+  assert.match(styleSource, /overflow: visible !important;[\s\S]*z-index: 2147483647 !important/);
+});
+
+test('AI settings content is grouped with spacing and theme-green background', () => {
+  assert.match(popupSource, /<div class="ai-settings-content">[\s\S]*id="aiProvider"[\s\S]*id="aiStatus"[\s\S]*<\/div>\s*<\/details>/);
+  assert.match(popupSource, /\.ai-settings-content[\s\S]*background: rgba\(99, 230, 190, 0\.\d+\)/);
+  assert.match(popupSource, /\.ai-settings-content[\s\S]*border-radius: 8px/);
+  assert.match(popupSource, /\.ai-settings-content[\s\S]*line-height: 1\.5/);
+  assert.match(popupSource, /#aiApiKey::placeholder \{ font-size: 11px; \}/);
+  assert.match(popupSource, /\.ai-key-action, \.ai-secondary-action[\s\S]*height: 28px;[\s\S]*min-height: 28px/);
+  assert.match(popupSource, /body\.dark-theme \.ai-settings-content \.ai-check-row \{ color: #eafff8; \}/);
 });
