@@ -10,6 +10,24 @@ const GEMINI_MODELS = [
   'gemini-3.1-flash-lite',
   'gemini-2.5-flash-lite'
 ];
+// Groq and OpenRouter expose OpenAI-compatible chat completion endpoints.
+// Keep model choices in the background so the popup only needs to collect a
+// provider and key, while retaining Gemini as the default for existing users.
+const AI_PROVIDER_CONFIG = {
+  gemini: { keyField: 'aiGeminiApiKey' },
+  groq: {
+    keyField: 'aiGroqApiKey',
+    endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+    model: 'llama-3.3-70b-versatile'
+  },
+  openrouter: {
+    keyField: 'aiOpenRouterApiKey',
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+    model: 'openai/gpt-4o-mini'
+  }
+};
+const AI_PROVIDER_STORAGE_KEY = 'aiProvider';
+const OPENAI_COMPATIBLE_TRANSLATION_TIMEOUT_MS = 30000;
 const GEMINI_TRANSLATION_TIMEOUT_MS = 30000;
 // Keep the default traffic below the common free-tier RPM range. A project
 // with a higher quota can still adjust this without changing request logic.
@@ -184,6 +202,98 @@ function getGeminiApiKey() {
   });
 }
 
+function getAiProvider() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([AI_PROVIDER_STORAGE_KEY], (data) => {
+      const provider = String(data?.[AI_PROVIDER_STORAGE_KEY] || 'gemini').toLowerCase();
+      resolve(AI_PROVIDER_CONFIG[provider] ? provider : 'gemini');
+    });
+  });
+}
+
+function getAiApiKey(provider) {
+  const config = AI_PROVIDER_CONFIG[provider];
+  if (!config) return Promise.resolve('');
+  if (provider === 'gemini') return getGeminiApiKey();
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['aiRememberKey', config.keyField], (localData) => {
+      if (localData.aiRememberKey) {
+        resolve(String(localData[config.keyField] || '').trim());
+        return;
+      }
+      const sessionStorage = chrome.storage.session || chrome.storage.local;
+      sessionStorage.get(config.keyField, (sessionData) => {
+        resolve(String(sessionData?.[config.keyField] || '').trim());
+      });
+    });
+  });
+}
+
+function createProviderHttpError(provider, status) {
+  const error = new Error(`${provider}_http_${status}`);
+  error.status = status;
+  error.provider = provider;
+  return error;
+}
+
+function buildTranslationPrompt(text, sourceLang, targetLang) {
+  const delimiterInstruction = text.includes('[[[LASDOSCAS_BREAK_9F2D]]]')
+    ? 'The input contains [[[LASDOSCAS_BREAK_9F2D]]] separators. Preserve every separator exactly, in the same order, with no extra separators.'
+    : '';
+  return [
+    `Translate the subtitle text from ${sourceLang || 'its detected language'} to ${targetLang}.`,
+    'Use natural subtitle language, preserve meaning, names, numbers, tone, and punctuation.',
+    'Return only the translation. Do not explain, summarize, add labels, or use Markdown.',
+    delimiterInstruction,
+    '',
+    text
+  ].filter(Boolean).join('\n');
+}
+
+async function translateWithOpenAICompatible(
+  provider,
+  text,
+  sourceLang,
+  targetLang,
+  apiKeyOverride = ''
+) {
+  const config = AI_PROVIDER_CONFIG[provider];
+  const apiKey = apiKeyOverride || await getAiApiKey(provider);
+  if (!config || !apiKey) throw new Error('missing_key');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), OPENAI_COMPATIBLE_TRANSLATION_TIMEOUT_MS);
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    };
+    if (provider === 'openrouter') {
+      headers['HTTP-Referer'] = 'https://github.com/lasDoscas';
+      headers['X-Title'] = 'lasDoscas';
+    }
+    const response = await fetch(config.endpoint, {
+      method: 'POST',
+      headers,
+      cache: 'no-store',
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: config.model,
+        messages: [{ role: 'user', content: buildTranslationPrompt(text, sourceLang, targetLang) }],
+        temperature: 0.2,
+        max_tokens: 8192
+      })
+    });
+    if (!response.ok) throw createProviderHttpError(provider, response.status);
+    const data = await response.json();
+    const translation = String(data?.choices?.[0]?.message?.content || '').trim();
+    if (!translation) throw new Error(`empty_${provider}_response`);
+    return translation;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function translateWithGemini(
   text,
   sourceLang,
@@ -295,6 +405,35 @@ function getGeminiTranslation(text, sourceLang, targetLang) {
   return request;
 }
 
+function getAiTranslation(text, sourceLang, targetLang, providerOverride = '') {
+  return getAiProvider().then((storedProvider) => {
+    const provider = String(providerOverride || storedProvider || 'gemini').toLowerCase();
+    if (provider === 'gemini') {
+      return getGeminiTranslation(text, sourceLang, targetLang).then((translation) => ({
+        translation,
+        source: provider
+      }));
+    }
+    if (!AI_PROVIDER_CONFIG[provider]) throw new Error('unsupported_provider');
+
+    const cacheKey = [
+      provider,
+      String(sourceLang || '').toLowerCase(),
+      String(targetLang || '').toLowerCase(),
+      text
+    ].join('\u0000');
+    const cachedTranslation = getCachedTranslation(cacheKey);
+    if (cachedTranslation !== null) {
+      return { translation: cachedTranslation, source: provider };
+    }
+    return translateWithOpenAICompatible(provider, text, sourceLang, targetLang)
+      .then((translation) => {
+        cacheTranslation(cacheKey, translation, text.length);
+        return { translation, source: provider };
+      });
+  });
+}
+
 function getCachedTranslation(cacheKey) {
   if (!translationCache.has(cacheKey)) return null;
   const entry = translationCache.get(cacheKey);
@@ -341,10 +480,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
     }
 
-    getGeminiTranslation(text, request.sourceLang, request.lang || 'zh-CN')
-      .then((translation) => sendResponse({ translation, source: 'gemini' }))
+    const provider = String(request.provider || '').toLowerCase();
+    getAiTranslation(text, request.sourceLang, request.lang || 'zh-CN', provider)
+      .then((result) => sendResponse(result))
       .catch((error) => {
-        console.info('lasDoscas: Gemini 翻译未完成，将按设置决定是否回退。', error.message);
+        console.info('lasDoscas: AI 翻译未完成，将按设置决定是否回退。', error.message);
         sendResponse({ translation: '', source: '', error: error.message });
       });
     return true;
@@ -451,7 +591,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // 保持消息通道开启
   }
 
-  if (request.action === "test_gemini_key") {
+  if (request.action === "test_gemini_key" || request.action === 'test_ai_key') {
+    const provider = request.action === 'test_gemini_key'
+      ? 'gemini'
+      : String(request.provider || '').toLowerCase();
+    if (!AI_PROVIDER_CONFIG[provider]) {
+      sendResponse({ ok: false, code: 'unsupported_provider' });
+      return false;
+    }
     const apiKey = String(request.apiKey || '').trim();
     if (!apiKey) {
       sendResponse({ ok: false, code: 'missing_key' });
@@ -460,10 +607,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // A connection test is deliberately limited to one model so a button
     // click cannot consume the whole fallback chain when quotas are low.
-    translateWithGemini('Hello', 'en', 'es', apiKey, false).then(() => {
+    const testRequest = provider === 'gemini'
+      ? translateWithGemini('Hello', 'en', 'es', apiKey, false)
+      : translateWithOpenAICompatible(provider, 'Hello', 'en', 'es', apiKey);
+    testRequest.then(() => {
       sendResponse({ ok: true });
     }).catch((error) => {
-      const httpStatus = Number(error?.status || String(error?.message || '').match(/gemini_http_(\d+)/)?.[1] || 0);
+      const httpStatus = Number(error?.status || String(error?.message || '').match(/(?:gemini|groq|openrouter)_http_(\d+)/)?.[1] || 0);
       let code = error?.name === 'AbortError' ? 'timeout' : 'request_failed';
       if (httpStatus === 401 || httpStatus === 403) code = 'invalid_key';
       else if (httpStatus === 429) code = 'rate_limited';

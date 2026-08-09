@@ -179,6 +179,53 @@ test('Gemini translation uses the session key and reports its source', async () 
   assert.equal(response.source, 'gemini');
 });
 
+test('Groq translation uses the configured provider and OpenAI-compatible payload', async () => {
+  const harness = createBackgroundHarness();
+  harness.setLocalStorage({ aiProvider: 'groq', aiGroqApiKey: 'groq-key', aiRememberKey: true });
+  harness.setFetchHandler(async (url, options) => {
+    assert.equal(url, 'https://api.groq.com/openai/v1/chat/completions');
+    assert.equal(options.headers.Authorization, 'Bearer groq-key');
+    const body = JSON.parse(options.body);
+    assert.equal(body.model, 'llama-3.3-70b-versatile');
+    assert.equal(body.messages[0].role, 'user');
+    assert.match(body.messages[0].content, /Translate the subtitle text/);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: 'Hola Groq' } }] })
+    };
+  });
+
+  const response = await harness.send({
+    action: 'translate_ai',
+    text: 'Hello',
+    sourceLang: 'en',
+    lang: 'es'
+  });
+
+  assert.equal(response.translation, 'Hola Groq');
+  assert.equal(response.source, 'groq');
+});
+
+test('OpenRouter key test reports invalid credentials without using Gemini', async () => {
+  const harness = createBackgroundHarness();
+  harness.setFetchHandler(async (url, options) => {
+    assert.equal(url, 'https://openrouter.ai/api/v1/chat/completions');
+    assert.equal(options.headers.Authorization, 'Bearer router-key');
+    return {
+      ok: false,
+      status: 401,
+      text: async () => '{"error":"unauthorized"}'
+    };
+  });
+
+  const response = await harness.send({ action: 'test_ai_key', provider: 'openrouter', apiKey: 'router-key' });
+  assert.equal(response.ok, false);
+  assert.equal(response.code, 'invalid_key');
+  assert.equal(response.status, 401);
+  assert.equal(harness.getFetchCount(), 1);
+});
+
 test('concurrent identical Gemini translations share one request', async () => {
   const harness = createBackgroundHarness();
   harness.setSessionStorage({ aiGeminiApiKey: 'session-key' });
