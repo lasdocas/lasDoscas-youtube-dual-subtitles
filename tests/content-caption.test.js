@@ -55,6 +55,17 @@ function loadCaptionAlgorithms() {
   return { context, ...context.captionAlgorithms };
 }
 
+function loadPlayerScaleCalculator() {
+  const context = { Number };
+  vm.createContext(context);
+  const source = [
+    extractBetween('const BASE_PLAYER_WIDTH_PX', 'let trackMode'),
+    'globalThis.calculatePlayerScaleForTest = calculatePlayerScale;'
+  ].join('\n');
+  vm.runInContext(source, context);
+  return context.calculatePlayerScaleForTest;
+}
+
 test('sentence segmentation keeps abbreviations and decimal numbers intact', () => {
   const { splitCompletedCaptionSentences } = loadCaptionAlgorithms();
   const result = splitCompletedCaptionSentences(
@@ -164,13 +175,23 @@ test('default Google path retains auto-translation and lookahead gates', () => {
   assert.match(contentSource, /currentSettings\.aiEnabled \? batchSize : INITIAL_TRANSLATION_LOOKAHEAD/);
 });
 
-test('wrapper scaling uses named layout constants', () => {
-  assert.match(contentSource, /const BASE_PLAYER_WIDTH_PX = 850/);
-  assert.match(contentSource, /const PLAYER_SCALE_EXPONENT = 0\.5/);
-  assert.match(contentSource, /const MIN_PLAYER_SCALE = 0\.75/);
-  assert.match(contentSource, /const MAX_PLAYER_SCALE = 1\.4/);
-  assert.match(contentSource, /targetWidth \/ BASE_PLAYER_WIDTH_PX/);
-  assert.doesNotMatch(contentSource, /targetWidth \/ 850/);
+test('wrapper scaling uses the baseline width and clamps both boundaries', () => {
+  const calculatePlayerScale = loadPlayerScaleCalculator();
+  assert.equal(calculatePlayerScale(0), 0.75);
+  assert.equal(calculatePlayerScale(-100), 0.75);
+  assert.equal(calculatePlayerScale(Number.NaN), 0.75);
+  assert.equal(calculatePlayerScale(850), 1);
+  assert.equal(calculatePlayerScale(3400), 1.4);
+});
+
+test('wrapper scaling grows monotonically between its boundaries', () => {
+  const calculatePlayerScale = loadPlayerScaleCalculator();
+  const widths = [200, 425, 850, 1200, 1600];
+  const scales = widths.map(calculatePlayerScale);
+  for (let index = 1; index < scales.length; index += 1) {
+    assert.ok(scales[index] >= scales[index - 1]);
+  }
+  assert.ok(scales.every((scale) => scale >= 0.75 && scale <= 1.4));
 });
 
 test('manual subtitle downloads use the same bounded fetch path with AI disabled', () => {
