@@ -9,6 +9,28 @@ const backgroundSource = fs.readFileSync(
   'utf8'
 );
 
+test('Gemini pacing waits instead of manufacturing a local 429', () => {
+  const executeStart = backgroundSource.indexOf('async function executeGeminiRequest');
+  const executeEnd = backgroundSource.indexOf('async function drainGeminiRequestQueue', executeStart);
+  assert.notEqual(executeStart, -1);
+  assert.notEqual(executeEnd, -1);
+  const queueBody = backgroundSource.slice(executeStart, executeEnd);
+
+  assert.match(queueBody, /const waitMs = Math\.max\(/);
+  assert.match(queueBody, /if \(waitMs\) await new Promise/);
+  assert.doesNotMatch(queueBody, /geminiNextRequestAt > Date\.now\(\)/);
+  assert.doesNotMatch(queueBody, /globalCooldownUntil > Date\.now\(\)/);
+});
+
+test('AI prompt asks models to resolve spoken and domain-specific ambiguity', () => {
+  assert.match(backgroundSource, /Infer domain-specific and idiomatic meanings from the full sentence/);
+  assert.match(backgroundSource, /imperfect spoken-language transcription/);
+});
+
+test('Gemini fallback candidates include the broadly available 2.5 Flash model', () => {
+  assert.match(backgroundSource, /'gemini-2\.5-flash'/);
+});
+
 function createBackgroundHarness() {
   let messageListener = null;
   let now = 1_000_000;
@@ -69,7 +91,15 @@ function createBackgroundHarness() {
       return fetchHandler(...args);
     },
     Map,
-    setTimeout,
+    setTimeout(callback, delay, ...args) {
+      // Advance the frozen clock through the four-second Gemini pacing window
+      // without making fallback tests sleep in real time.
+      if (delay === 4000) {
+        now += delay;
+        return setTimeout(callback, 0, ...args);
+      }
+      return setTimeout(callback, delay, ...args);
+    },
     clearTimeout,
     AbortController
   };
@@ -79,12 +109,13 @@ function createBackgroundHarness() {
       cacheTranslation,
       getCachedTranslation,
       translationCache
-    };`,
+    }; globalThis.queueApi = { queueGeminiRequest };`,
     context
   );
 
   return {
     cacheApi: context.cacheApi,
+    queueApi: context.queueApi,
     getFetchCount: () => fetchCount,
     send(request) {
       return new Promise((resolve) => {
@@ -106,6 +137,29 @@ function createBackgroundHarness() {
     }
   };
 }
+
+test('visible Gemini work overtakes queued prefetch work', async () => {
+  const harness = createBackgroundHarness();
+  const order = [];
+  let releaseFirst;
+  const first = harness.queueApi.queueGeminiRequest(() => new Promise((resolve) => {
+    order.push('prefetch-active');
+    releaseFirst = resolve;
+  }), 'prefetch');
+  const stalePrefetch = harness.queueApi.queueGeminiRequest(() => {
+    order.push('prefetch-queued');
+    return 'prefetch';
+  }, 'prefetch');
+  const visible = harness.queueApi.queueGeminiRequest(() => {
+    order.push('visible');
+    return 'visible';
+  }, 'visible');
+
+  await new Promise((resolve) => setImmediate(resolve));
+  releaseFirst('first');
+  await Promise.all([first, stalePrefetch, visible]);
+  assert.deepEqual(order, ['prefetch-active', 'visible', 'prefetch-queued']);
+});
 
 test('translation requests reuse normalized text and language cache keys', async () => {
   const harness = createBackgroundHarness();
@@ -177,6 +231,7 @@ test('Gemini translation uses the session key and reports its source', async () 
 
   assert.equal(response.translation, 'Hola');
   assert.equal(response.source, 'gemini');
+  assert.equal(response.cached, false);
 });
 
 test('Groq translation uses the configured provider and OpenAI-compatible payload', async () => {
@@ -205,6 +260,7 @@ test('Groq translation uses the configured provider and OpenAI-compatible payloa
 
   assert.equal(response.translation, 'Hola Groq');
   assert.equal(response.source, 'groq');
+  assert.equal(response.cached, false);
 });
 
 test('OpenRouter key test reports invalid credentials without using Gemini', async () => {
@@ -253,10 +309,11 @@ test('concurrent identical Gemini translations share one request', async () => {
     lang: 'es'
   });
   assert.equal(cached.translation, 'Hola');
+  assert.equal(cached.cached, true);
   assert.equal(harness.getFetchCount(), 1);
 });
 
-test('Gemini 429 enters cooldown without a cross-model fallback burst', async () => {
+test('Gemini 429 cools each model and exhausts the paced fallback chain once', async () => {
   const harness = createBackgroundHarness();
   harness.setSessionStorage({ aiGeminiApiKey: 'session-key' });
   harness.setFetchHandler(async () => ({
@@ -270,10 +327,10 @@ test('Gemini 429 enters cooldown without a cross-model fallback burst', async ()
   const second = await harness.send({ action: 'translate_ai', text: 'Second', sourceLang: 'en', lang: 'es' });
   assert.equal(first.error, 'gemini_http_429');
   assert.equal(second.error, 'gemini_http_429');
-  assert.equal(harness.getFetchCount(), 1);
+  assert.equal(harness.getFetchCount(), 5);
 });
 
-test('Gemini quota exhaustion does not continue with the next model', async () => {
+test('Gemini model quota exhaustion falls back to the next model', async () => {
   const harness = createBackgroundHarness();
   harness.setSessionStorage({ aiGeminiApiKey: 'session-key' });
   const attemptedModels = [];
@@ -302,21 +359,32 @@ test('Gemini quota exhaustion does not continue with the next model', async () =
     lang: 'es'
   });
 
-  assert.equal(response.translation, '');
-  assert.deepEqual(attemptedModels, ['gemini-3.5-flash']);
+  assert.equal(response.translation, 'Hola Lite');
+  assert.equal(response.source, 'gemini');
+  assert.deepEqual(attemptedModels, ['gemini-3.5-flash', 'gemini-3.5-flash-lite']);
 });
 
-test('Gemini key test does not consume the whole fallback chain', async () => {
+test('Gemini key test succeeds when a fallback model still has quota', async () => {
   const harness = createBackgroundHarness();
-  harness.setFetchHandler(async (url) => ({
-    ok: false,
-    status: 429,
-    headers: { get: () => null },
-    text: async () => '{"error":{"status":"RESOURCE_EXHAUSTED"}}'
-  }));
+  let requestCount = 0;
+  harness.setFetchHandler(async () => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      return {
+        ok: false,
+        status: 429,
+        headers: { get: () => null },
+        text: async () => '{"error":{"status":"RESOURCE_EXHAUSTED"}}'
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'Hola' }] } }] })
+    };
+  });
 
   const response = await harness.send({ action: 'test_gemini_key', apiKey: 'test-key' });
-  assert.equal(response.ok, false);
-  assert.equal(response.code, 'rate_limited');
-  assert.equal(harness.getFetchCount(), 1);
+  assert.equal(response.ok, true);
+  assert.equal(harness.getFetchCount(), 2);
 });

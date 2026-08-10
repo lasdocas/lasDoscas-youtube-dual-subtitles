@@ -36,7 +36,14 @@ let aiSettings = { ...aiDefaultSettings };
 let aiKeyValue = '';
 let aiStatusKey = 'aiNotConfigured';
 let aiStatusType = '';
-const AI_KEY_STORAGE_FIELD = 'aiGeminiApiKey';
+const AI_KEY_STORAGE_FIELDS = {
+  gemini: 'aiGeminiApiKey',
+  groq: 'aiGroqApiKey',
+  openrouter: 'aiOpenRouterApiKey'
+};
+function getAiKeyStorageField(provider = aiSettings.aiProvider) {
+  return AI_KEY_STORAGE_FIELDS[provider] || AI_KEY_STORAGE_FIELDS.gemini;
+}
 
 const toggleFields = ['srcNormalBold', 'srcFsBold', 'transNormalBold', 'transFsBold'];
 
@@ -61,8 +68,10 @@ const i18nDict = {
     aiSection: 'AI 增强',
     aiProvider: '服务商',
     aiGemini: 'Google Gemini',
+    aiGroq: 'Groq',
+    aiOpenRouter: 'OpenRouter',
     aiApiKey: 'API Key',
-    aiKeyPlaceholder: '粘贴 Gemini API Key',
+    aiKeyPlaceholder: '粘贴 API Key',
     aiSavedKeyPlaceholder: 'Key 已保存，输入新 Key 可替换',
     aiStorageHint: '当前浏览器会话内保存，不会发送给 YouTube',
     aiStorageRememberedHint: '已保存在此设备，关闭浏览器后仍会保留',
@@ -82,7 +91,7 @@ const i18nDict = {
     aiApplied: 'Key 已应用，AI 增强已开启',
     aiMissingKey: '请先输入 API Key',
     aiInvalidKey: 'Key 无效或没有访问权限',
-    aiRateLimited: 'Gemini 返回 429：额度已用完或暂时限流',
+    aiRateLimited: '服务商返回 429：额度已用完或暂时限流',
     aiNetworkError: '网络连接失败',
     aiTimeout: '连接超时，请检查网络或代理设置',
     aiExtensionError: '扩展后台未响应，请在 chrome://extensions 重新加载扩展',
@@ -106,8 +115,10 @@ const i18nDict = {
     aiSection: 'AI enhancement',
     aiProvider: 'Provider',
     aiGemini: 'Google Gemini',
+    aiGroq: 'Groq',
+    aiOpenRouter: 'OpenRouter',
     aiApiKey: 'API key',
-    aiKeyPlaceholder: 'Paste your Gemini API key',
+    aiKeyPlaceholder: 'Paste your API key',
     aiSavedKeyPlaceholder: 'Key saved; enter a new key to replace it',
     aiStorageHint: 'Saved for this browser session, never sent to YouTube',
     aiStorageRememberedHint: 'Saved on this device and retained after closing the browser',
@@ -127,7 +138,7 @@ const i18nDict = {
     aiApplied: 'Key applied; AI enhancement is on',
     aiMissingKey: 'Enter an API key first',
     aiInvalidKey: 'Invalid key or access denied',
-    aiRateLimited: 'Gemini returned 429: quota exhausted or temporarily rate-limited',
+    aiRateLimited: 'Provider returned 429: quota exhausted or temporarily rate-limited',
     aiNetworkError: 'Network connection failed',
     aiTimeout: 'Connection timed out; check your network or proxy',
     aiExtensionError: 'Extension background did not respond; reload it at chrome://extensions',
@@ -151,8 +162,10 @@ const i18nDict = {
     aiSection: 'Mejora con IA',
     aiProvider: 'Proveedor',
     aiGemini: 'Google Gemini',
+    aiGroq: 'Groq',
+    aiOpenRouter: 'OpenRouter',
     aiApiKey: 'Clave API',
-    aiKeyPlaceholder: 'Pega tu clave API de Gemini',
+    aiKeyPlaceholder: 'Pega tu clave API',
     aiSavedKeyPlaceholder: 'Clave guardada; introduce otra para reemplazarla',
     aiStorageHint: 'Guardada durante esta sesión, nunca se envía a YouTube',
     aiStorageRememberedHint: 'Guardada en este dispositivo incluso al cerrar el navegador',
@@ -172,7 +185,7 @@ const i18nDict = {
     aiApplied: 'Clave aplicada; la mejora con IA está activa',
     aiMissingKey: 'Introduce primero una clave API',
     aiInvalidKey: 'Clave no válida o acceso denegado',
-    aiRateLimited: 'Gemini devolvió 429: cuota agotada o límite temporal',
+    aiRateLimited: 'El proveedor devolvió 429: cuota agotada o límite temporal',
     aiNetworkError: 'Falló la conexión de red',
     aiTimeout: 'La conexión agotó el tiempo; revisa tu red o proxy',
     aiExtensionError: 'El fondo de la extensión no respondió; recárgala en chrome://extensions',
@@ -276,16 +289,26 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAiSettings();
 });
 
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local' || !changes.aiEnabled) return;
+  aiSettings.aiEnabled = Boolean(changes.aiEnabled.newValue);
+  const enabled = document.getElementById('aiEnabled');
+  const details = document.getElementById('aiSettingsArea');
+  if (enabled) enabled.checked = aiSettings.aiEnabled;
+  if (details) details.open = aiSettings.aiEnabled;
+});
+
 function loadAiSettings() {
   const fields = Object.keys(aiDefaultSettings);
-  chrome.storage.local.get([...fields, AI_KEY_STORAGE_FIELD], (localData) => {
+  chrome.storage.local.get([...fields, ...Object.values(AI_KEY_STORAGE_FIELDS)], (localData) => {
     fields.forEach((field) => {
       if (localData[field] !== undefined) aiSettings[field] = localData[field];
     });
 
-    aiSessionStorage.get(AI_KEY_STORAGE_FIELD, (sessionData) => {
-      const rememberedKey = String(localData[AI_KEY_STORAGE_FIELD] || '').trim();
-      const sessionKey = String(sessionData[AI_KEY_STORAGE_FIELD] || '').trim();
+    aiSessionStorage.get(Object.values(AI_KEY_STORAGE_FIELDS), (sessionData) => {
+      const keyField = getAiKeyStorageField(aiSettings.aiProvider);
+      const rememberedKey = String(localData[keyField] || '').trim();
+      const sessionKey = String(sessionData[keyField] || '').trim();
       aiKeyValue = aiSettings.aiRememberKey ? rememberedKey : sessionKey;
       aiSettings.aiApiKeyConfigured = Boolean(aiKeyValue);
       aiStatusKey = aiKeyValue
@@ -344,13 +367,14 @@ function persistAiKey(onComplete) {
   const useLocalStorage = aiSettings.aiRememberKey || !hasSessionStorage;
   const targetStorage = useLocalStorage ? chrome.storage.local : aiSessionStorage;
   const otherStorage = useLocalStorage ? aiSessionStorage : chrome.storage.local;
+  const keyField = getAiKeyStorageField();
   const finish = () => {
     if (onComplete) onComplete();
   };
 
-  if (otherStorage !== targetStorage) otherStorage.remove(AI_KEY_STORAGE_FIELD);
-  if (aiKeyValue) targetStorage.set({ [AI_KEY_STORAGE_FIELD]: aiKeyValue }, finish);
-  else targetStorage.remove(AI_KEY_STORAGE_FIELD, finish);
+  if (otherStorage !== targetStorage) otherStorage.remove(keyField);
+  if (aiKeyValue) targetStorage.set({ [keyField]: aiKeyValue }, finish);
+  else targetStorage.remove(keyField, finish);
 }
 
 function bindAiEvents() {
@@ -364,6 +388,7 @@ function bindAiEvents() {
   const fallback = document.getElementById('aiFallback');
   const testButton = document.getElementById('aiTestConnection');
   const applyButton = document.getElementById('aiApplyKey');
+  const providerSelect = document.getElementById('aiProvider');
   const scrollArea = document.getElementById('settingsScrollArea');
 
   const updateAiExpansionLayout = () => {
@@ -394,6 +419,24 @@ function bindAiEvents() {
   enabled.addEventListener('change', () => {
     saveAiSettings({ aiEnabled: enabled.checked });
     details.open = enabled.checked;
+  });
+
+  providerSelect.addEventListener('change', () => {
+    persistAiKey();
+    aiSettings.aiProvider = providerSelect.value;
+    const keyField = getAiKeyStorageField();
+    chrome.storage.local.get(keyField, (localData) => {
+      aiSessionStorage.get(keyField, (sessionData) => {
+        aiKeyValue = aiSettings.aiRememberKey
+          ? String(localData[keyField] || '').trim()
+          : String(sessionData[keyField] || '').trim();
+        aiSettings.aiApiKeyConfigured = Boolean(aiKeyValue);
+        saveAiSettings({ aiProvider: aiSettings.aiProvider });
+        keyInput.value = '';
+        updateAiKeyStorageUI();
+        setAiStatus(aiKeyValue ? (aiSettings.aiRememberKey ? 'aiConfiguredDevice' : 'aiConfiguredSession') : 'aiNotConfigured');
+      });
+    });
   });
 
   keyInput.addEventListener('input', () => {
@@ -427,8 +470,9 @@ function bindAiEvents() {
     aiKeyValue = '';
     keyInput.value = '';
     keyInput.type = 'password';
-    chrome.storage.local.remove(AI_KEY_STORAGE_FIELD);
-    aiSessionStorage.remove(AI_KEY_STORAGE_FIELD);
+    const keyField = getAiKeyStorageField();
+    chrome.storage.local.remove(keyField);
+    aiSessionStorage.remove(keyField);
     updateAiKeyStorageUI();
     setAiStatus('aiNotConfigured');
   });
@@ -460,7 +504,7 @@ function bindAiEvents() {
     persistAiKey();
     testButton.disabled = true;
     setAiStatus('aiTesting');
-    chrome.runtime.sendMessage({ action: 'test_gemini_key', apiKey: aiKeyValue }, (response) => {
+    chrome.runtime.sendMessage({ action: 'test_ai_key', provider: aiSettings.aiProvider, apiKey: aiKeyValue }, (response) => {
       testButton.disabled = false;
       if (chrome.runtime.lastError) {
         setAiStatus('aiExtensionError', 'error');

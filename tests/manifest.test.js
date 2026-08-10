@@ -56,3 +56,10 @@ test('manifest keeps page bridge and extension content in separate worlds', () =
   assert.deepEqual(isolatedEntry.js, ['localization.js', 'content.js']);
   assert.equal(isolatedEntry.run_at, 'document_idle');
 });
+
+test('manifest exposes every AI indicator icon to YouTube pages', () => {
+  const resources = new Set(manifest.web_accessible_resources.flatMap((entry) => entry.resources));
+  ['ai_off.svg', 'ai_loading.svg', 'ai_standby.svg', 'ai.svg'].forEach((icon) => {
+    assert.equal(resources.has(icon), true, `missing AI indicator resource: ${icon}`);
+  });
+});

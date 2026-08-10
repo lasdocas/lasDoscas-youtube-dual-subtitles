@@ -8,6 +8,7 @@ const GEMINI_MODELS = [
   'gemini-3.5-flash',
   'gemini-3.5-flash-lite',
   'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
   'gemini-2.5-flash-lite'
 ];
 // Groq and OpenRouter expose OpenAI-compatible chat completion endpoints.
@@ -41,7 +42,11 @@ let geminiRateState = {
   models: {}
 };
 let geminiRateStateLoadPromise = null;
-let geminiRequestQueue = Promise.resolve();
+const geminiRequestQueues = {
+  visible: [],
+  prefetch: []
+};
+let isGeminiQueueRunning = false;
 let geminiNextRequestAt = 0;
 
 function getSessionStorage() {
@@ -59,6 +64,9 @@ function loadGeminiRateState() {
         const storedModels = storedState.models && typeof storedState.models === 'object'
           ? storedState.models
           : {};
+        // globalCooldownUntil existed briefly in an older format. Ignore it:
+        // Gemini quotas are commonly scoped per model, so one exhausted model
+        // must not block other models that still have quota.
         geminiRateState = { models: {} };
         GEMINI_MODELS.forEach((model) => {
           const modelState = storedModels[model];
@@ -140,7 +148,6 @@ function enterGeminiCooldown(model, response, errorText) {
     : Math.max(retryAfterMs, exponentialCooldown);
   modelState.cooldownUntil = Math.max(modelState.cooldownUntil, Date.now() + cooldownMs);
   modelState.nextRequestAt = Math.max(modelState.nextRequestAt, modelState.cooldownUntil);
-  geminiNextRequestAt = Math.max(geminiNextRequestAt, modelState.cooldownUntil);
   persistGeminiRateState();
   return cooldownMs;
 }
@@ -157,33 +164,55 @@ function getNextGeminiModel() {
   return GEMINI_MODELS.find((model) => getGeminiModelState(model).cooldownUntil <= now) || null;
 }
 
-function queueGeminiRequest(task) {
-  const queuedRequest = geminiRequestQueue.catch(() => {}).then(async () => {
-    await loadGeminiRateState();
-    if (geminiNextRequestAt > Date.now()) {
-      throw createGeminiHttpError(429, geminiNextRequestAt - Date.now());
-    }
-    const model = getNextGeminiModel();
-    const now = Date.now();
-    if (!model) {
-      const earliestCooldown = Math.min(...GEMINI_MODELS.map((name) => getGeminiModelState(name).cooldownUntil));
-      throw createGeminiHttpError(429, Math.max(0, earliestCooldown - now));
-    }
-    const modelState = getGeminiModelState(model);
-    // Rate-limit the project globally. Per-model pacing alone still allows a
-    // fallback chain to burst several requests in the same second.
-    const waitMs = Math.max(0, modelState.nextRequestAt - now, geminiNextRequestAt - now);
-    if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
-    if (modelState.cooldownUntil > Date.now()) {
-      throw createGeminiHttpError(429, modelState.cooldownUntil - Date.now());
-    }
+async function executeGeminiRequest(task) {
+  await loadGeminiRateState();
+  const model = getNextGeminiModel();
+  const now = Date.now();
+  if (!model) {
+    const earliestCooldown = Math.min(...GEMINI_MODELS.map((name) => getGeminiModelState(name).cooldownUntil));
+    throw createGeminiHttpError(429, Math.max(0, earliestCooldown - now));
+  }
+  const modelState = getGeminiModelState(model);
+  // Rate-limit the project globally. A pacing window is not a provider error:
+  // queued work waits for its turn instead of being reported as a local 429.
+  const waitMs = Math.max(0, modelState.nextRequestAt - now, geminiNextRequestAt - now);
+  if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
+  if (modelState.cooldownUntil > Date.now()) {
+    throw createGeminiHttpError(429, modelState.cooldownUntil - Date.now());
+  }
 
-    geminiNextRequestAt = Date.now() + GEMINI_MIN_REQUEST_INTERVAL_MS;
-    modelState.nextRequestAt = geminiNextRequestAt;
-    persistGeminiRateState();
-    return task(model);
+  geminiNextRequestAt = Date.now() + GEMINI_MIN_REQUEST_INTERVAL_MS;
+  modelState.nextRequestAt = geminiNextRequestAt;
+  persistGeminiRateState();
+  return task(model);
+}
+
+async function drainGeminiRequestQueue() {
+  if (isGeminiQueueRunning) return;
+  isGeminiQueueRunning = true;
+  try {
+    while (geminiRequestQueues.visible.length || geminiRequestQueues.prefetch.length) {
+      const entry = geminiRequestQueues.visible.shift() || geminiRequestQueues.prefetch.shift();
+      try {
+        entry.resolve(await executeGeminiRequest(entry.task));
+      } catch (error) {
+        entry.reject(error);
+      }
+    }
+  } finally {
+    isGeminiQueueRunning = false;
+    if (geminiRequestQueues.visible.length || geminiRequestQueues.prefetch.length) {
+      drainGeminiRequestQueue();
+    }
+  }
+}
+
+function queueGeminiRequest(task, priority = 'visible') {
+  const queueName = priority === 'prefetch' ? 'prefetch' : 'visible';
+  const queuedRequest = new Promise((resolve, reject) => {
+    geminiRequestQueues[queueName].push({ task, resolve, reject });
   });
-  geminiRequestQueue = queuedRequest.catch(() => {});
+  drainGeminiRequestQueue();
   return queuedRequest;
 }
 
@@ -243,6 +272,8 @@ function buildTranslationPrompt(text, sourceLang, targetLang) {
   return [
     `Translate the subtitle text from ${sourceLang || 'its detected language'} to ${targetLang}.`,
     'Use natural subtitle language, preserve meaning, names, numbers, tone, and punctuation.',
+    'Infer domain-specific and idiomatic meanings from the full sentence; do not translate an ambiguous word literally when its surrounding actions make the intended context clear.',
+    'The input may be imperfect spoken-language transcription. Preserve the intended meaning without explaining or correcting the source text.',
     'Return only the translation. Do not explain, summarize, add labels, or use Markdown.',
     delimiterInstruction,
     '',
@@ -281,7 +312,10 @@ async function translateWithOpenAICompatible(
         model: config.model,
         messages: [{ role: 'user', content: buildTranslationPrompt(text, sourceLang, targetLang) }],
         temperature: 0.2,
-        max_tokens: 8192
+        // Subtitle batches are intentionally bounded in content.js. Keep a
+        // finite response ceiling so a provider cannot spend a large amount
+        // of output tokens on explanations or repeated text.
+        max_tokens: 2048
       })
     });
     if (!response.ok) throw createProviderHttpError(provider, response.status);
@@ -299,7 +333,8 @@ async function translateWithGemini(
   sourceLang,
   targetLang,
   apiKeyOverride = '',
-  allowModelFallback = true
+  allowModelFallback = true,
+  priority = 'visible'
 ) {
   const apiKey = apiKeyOverride || await getGeminiApiKey();
   if (!apiKey) throw new Error('missing_key');
@@ -310,6 +345,8 @@ async function translateWithGemini(
   const prompt = [
     `Translate the subtitle text from ${sourceLang || 'its detected language'} to ${targetLang}.`,
     'Use natural subtitle language, preserve meaning, names, numbers, tone, and punctuation.',
+    'Infer domain-specific and idiomatic meanings from the full sentence; do not translate an ambiguous word literally when its surrounding actions make the intended context clear.',
+    'The input may be imperfect spoken-language transcription. Preserve the intended meaning without explaining or correcting the source text.',
     'Return only the translation. Do not explain, summarize, add labels, or use Markdown.',
     delimiterInstruction,
     '',
@@ -364,7 +401,7 @@ async function translateWithGemini(
     } finally {
       clearTimeout(timeoutId);
     }
-  });
+  }, priority);
 
   let lastError = null;
   const maxAttempts = allowModelFallback ? GEMINI_MODELS.length : 1;
@@ -373,18 +410,16 @@ async function translateWithGemini(
       return await requestOnce();
     } catch (error) {
       lastError = error;
-      // Quota exhaustion and unavailable model ids are eligible for fallback.
-      // Authentication, network and generation errors should be surfaced as-is.
-      // A 429 means the project quota is exhausted. Retrying on another model
-      // spends more quota and is the main cause of cross-model explosions.
-      if (error?.status === 429) throw error;
-      if (error?.status !== 404) throw error;
+      // Gemini quotas are commonly per model. Cool down the model that
+      // returned 429 and try the next healthy candidate. queueGeminiRequest()
+      // keeps fallback attempts globally paced, so this cannot become a burst.
+      if (error?.status !== 404 && error?.status !== 429) throw error;
     }
   }
   throw lastError || createGeminiHttpError(429);
 }
 
-function getGeminiTranslation(text, sourceLang, targetLang) {
+function getGeminiTranslation(text, sourceLang, targetLang, priority = 'visible') {
   const cacheKey = [
     'gemini',
     String(sourceLang || '').toLowerCase(),
@@ -392,26 +427,29 @@ function getGeminiTranslation(text, sourceLang, targetLang) {
     text
   ].join('\u0000');
   const cachedTranslation = getCachedTranslation(cacheKey);
-  if (cachedTranslation !== null) return Promise.resolve(cachedTranslation);
+  if (cachedTranslation !== null) {
+    return Promise.resolve({ translation: cachedTranslation, cached: true });
+  }
   if (geminiInflightTranslations.has(cacheKey)) return geminiInflightTranslations.get(cacheKey);
 
-  const request = translateWithGemini(text, sourceLang, targetLang)
+  const request = translateWithGemini(text, sourceLang, targetLang, '', true, priority)
     .then((translation) => {
       cacheTranslation(cacheKey, translation, text.length);
-      return translation;
+      return { translation, cached: false };
     })
     .finally(() => geminiInflightTranslations.delete(cacheKey));
   geminiInflightTranslations.set(cacheKey, request);
   return request;
 }
 
-function getAiTranslation(text, sourceLang, targetLang, providerOverride = '') {
+function getAiTranslation(text, sourceLang, targetLang, providerOverride = '', priority = 'visible') {
   return getAiProvider().then((storedProvider) => {
     const provider = String(providerOverride || storedProvider || 'gemini').toLowerCase();
     if (provider === 'gemini') {
-      return getGeminiTranslation(text, sourceLang, targetLang).then((translation) => ({
-        translation,
-        source: provider
+      return getGeminiTranslation(text, sourceLang, targetLang, priority).then((result) => ({
+        translation: result.translation,
+        source: provider,
+        cached: result.cached
       }));
     }
     if (!AI_PROVIDER_CONFIG[provider]) throw new Error('unsupported_provider');
@@ -424,12 +462,12 @@ function getAiTranslation(text, sourceLang, targetLang, providerOverride = '') {
     ].join('\u0000');
     const cachedTranslation = getCachedTranslation(cacheKey);
     if (cachedTranslation !== null) {
-      return { translation: cachedTranslation, source: provider };
+      return { translation: cachedTranslation, source: provider, cached: true };
     }
     return translateWithOpenAICompatible(provider, text, sourceLang, targetLang)
       .then((translation) => {
         cacheTranslation(cacheKey, translation, text.length);
-        return { translation, source: provider };
+        return { translation, source: provider, cached: false };
       });
   });
 }
@@ -481,7 +519,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     const provider = String(request.provider || '').toLowerCase();
-    getAiTranslation(text, request.sourceLang, request.lang || 'zh-CN', provider)
+    getAiTranslation(
+      text,
+      request.sourceLang,
+      request.lang || 'zh-CN',
+      provider,
+      request.priority === 'prefetch' ? 'prefetch' : 'visible'
+    )
       .then((result) => sendResponse(result))
       .catch((error) => {
         console.info('lasDoscas: AI 翻译未完成，将按设置决定是否回退。', error.message);
@@ -605,10 +649,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
     }
 
-    // A connection test is deliberately limited to one model so a button
-    // click cannot consume the whole fallback chain when quotas are low.
+    // A valid key can have no quota on the preferred model while another
+    // configured Gemini model remains usable. Test the same fallback chain as
+    // real subtitle requests so the result reflects actual availability.
     const testRequest = provider === 'gemini'
-      ? translateWithGemini('Hello', 'en', 'es', apiKey, false)
+      ? translateWithGemini('Hello', 'en', 'es', apiKey, true)
       : translateWithOpenAICompatible(provider, 'Hello', 'en', 'es', apiKey);
     testRequest.then(() => {
       sendResponse({ ok: true });
