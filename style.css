@@ -100,8 +100,8 @@ body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  width: 40px !important;
-  height: 40px !important;
+  width: 34px !important;
+  height: 34px !important;
   padding: 0 !important;
   margin: 0 !important;
   border: 0 !important;
@@ -140,7 +140,7 @@ body[data-yt-dual-sub-active="true"] .ytp-caption-window-container {
 
 .lasdoscas-ai-indicator img {
   position: absolute !important;
-  inset: 4px !important;
+  inset: 1px !important;
   display: none !important;
   width: 32px !important;
   height: 32px !important;

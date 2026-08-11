@@ -27,6 +27,16 @@ test('AI prompt asks models to resolve spoken and domain-specific ambiguity', ()
   assert.match(backgroundSource, /imperfect spoken-language transcription/);
 });
 
+test('AI batch prompt treats context as read-only and requires compact ids', () => {
+  assert.match(backgroundSource, /LASDOSCAS_BATCH_V2/);
+  assert.match(backgroundSource, /Use the context only to resolve pronouns, terminology, idioms/);
+  assert.match(backgroundSource, /Do not translate or return the context/);
+  assert.match(backgroundSource, /\{"i":\[\[id,"translation"\],\.\.\.\]\}/);
+  assert.match(backgroundSource, /Return every input id exactly once and in the original order/);
+  assert.match(backgroundSource, /console\.debug\('lasDoscas: AI request usage'/);
+  assert.match(backgroundSource, /batchSize, \.\.\.usage/);
+});
+
 test('Gemini fallback candidates include the broadly available 2.5 Flash model', () => {
   assert.match(backgroundSource, /'gemini-2\.5-flash'/);
 });
@@ -261,6 +271,38 @@ test('Groq translation uses the configured provider and OpenAI-compatible payloa
   assert.equal(response.translation, 'Hola Groq');
   assert.equal(response.source, 'groq');
   assert.equal(response.cached, false);
+});
+
+test('OpenAI-compatible batch requests enable JSON mode and a bounded larger output', async () => {
+  const harness = createBackgroundHarness();
+  harness.setLocalStorage({ aiProvider: 'groq', aiGroqApiKey: 'groq-key', aiRememberKey: true });
+  const batchText = 'LASDOSCAS_BATCH_V2\n' + JSON.stringify({
+    c: ['Earlier context'],
+    i: [[0, 'First'], [1, 'Second']]
+  });
+  harness.setFetchHandler(async (url, options) => {
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body.response_format, { type: 'json_object' });
+    assert.equal(body.max_tokens, 4096);
+    assert.match(body.messages[0].content, /Context: \["Earlier context"\]/);
+    assert.match(body.messages[0].content, /Items: \[\[0,"First"\],\[1,"Second"\]\]/);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: '{"i":[[0,"Uno"],[1,"Dos"]]}' } }] })
+    };
+  });
+
+  const response = await harness.send({
+    action: 'translate_ai',
+    text: batchText,
+    sourceLang: 'en',
+    lang: 'es'
+  });
+  assert.equal(response.translation, '{"i":[[0,"Uno"],[1,"Dos"]]}');
+  assert.equal(response.source, 'groq');
+  await harness.send({ action: 'translate_ai', text: batchText, sourceLang: 'en', lang: 'es' });
+  assert.equal(harness.getFetchCount(), 2, 'validated per-cue storage, not raw batch JSON, owns caching');
 });
 
 test('OpenRouter key test reports invalid credentials without using Gemini', async () => {

@@ -154,17 +154,23 @@ const AUTO_FILE_TRANSLATION_RETRY_MS = 2000;
 const FILE_CUE_TRANSLATION_GRACE_MS = 240;
 const YOUTUBE_TRANSLATION_WARMUP_MS = 300;
 const INITIAL_TRANSLATION_LOOKAHEAD = 6;
-const AUTO_TRANSLATION_LOOKAHEAD_SECONDS = 30;
+const AUTO_TRANSLATION_LOOKAHEAD_SECONDS = 60;
 const AUTO_TRANSLATION_WINDOW_MAX_CUES = 24;
 const AUTO_TRANSLATION_WINDOW_CONCURRENCY = 4;
 const AUTO_TRANSLATION_WINDOW_REFRESH_SECONDS = 5;
 const AUTO_FILE_WARMUP_TIMEOUT_MS = 1500;
 const PRELOAD_BATCH_DELAY_MS = 80;
 const STANDARD_TRANSLATION_BATCH_SIZE = 16;
-// AI requests are deliberately much smaller than standard translation
-// batches. This bounds per-request input tokens and keeps playback responsive.
-const AI_TRANSLATION_BATCH_CUE_LIMIT = 12;
+// Batch by both cue count and serialized size. Twenty-four nearby cues usually
+// cover 45-90 seconds without making the first useful response too large.
+const AI_TRANSLATION_BATCH_CUE_LIMIT = 24;
 const AI_TRANSLATION_MAX_CHARS = 4500;
+const AI_TRANSLATION_CONTEXT_CUE_LIMIT = 3;
+const AI_TRANSLATION_LOOKAHEAD_SECONDS = 75;
+const AI_VISIBLE_BATCH_GRACE_MS = 650;
+const AI_BATCH_RETRY_CUE_LIMIT = 8;
+const AI_TRANSLATION_RETRY_COOLDOWN_MS = 30 * 1000;
+const AI_BATCH_PAYLOAD_PREFIX = 'LASDOSCAS_BATCH_V2\n';
 const SUBTITLE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SUBTITLE_CACHE_MAX_CUES = 2500;
 const SUBTITLE_CACHE_SAVE_DEBOUNCE_MS = 1200;
@@ -215,11 +221,14 @@ let renderedFileCuePartIndex = -1;
 let visibleFileAiWindowAnchorCueIndex = -1;
 let autoTranslationWindowSequence = 0;
 let autoTranslationWindowAnchor = -1;
+let autoTranslationAiAnchorCueIndex = -1;
 let bridgeRequestSequence = 0;
 const bridgeRequests = new Map();
 const inflightTranslations = new Map();
 const inflightAiTranslations = new Map();
+const visibleAiGraceRequests = new Map();
 const settledAiTranslations = new Set();
+const failedAiTranslations = new Map();
 const queuedAiTranslations = new Set();
 const aiTranslationStates = new Map();
 const aiTranslationOrigins = new Map();
@@ -2180,6 +2189,7 @@ function cancelTrackLoad() {
   trackLoadGeneration += 1;
   autoTranslationWindowSequence += 1;
   autoTranslationWindowAnchor = -1;
+  autoTranslationAiAnchorCueIndex = -1;
   clearTimeout(trackRetryTimer);
   clearTimeout(translateDebounceTimer);
   trackRetryTimer = null;
@@ -2630,11 +2640,74 @@ function getAiRequestKey(sourceText, generation, lang = currentSettings.lang) {
   return `ai|${getTranslationRequestKey(sourceText, generation, lang)}`;
 }
 
+function getAiBatchContext(texts) {
+  if (!texts.length || !preloadedSentencesList.length) return [];
+  const firstIndex = preloadedSentencesList.findIndex((cue) => cue.text === texts[0]);
+  if (firstIndex <= 0) return [];
+  return Array.from(new Set(
+    preloadedSentencesList
+      .slice(Math.max(0, firstIndex - AI_TRANSLATION_CONTEXT_CUE_LIMIT), firstIndex)
+      .map((cue) => cue.text)
+      .filter(Boolean)
+  ));
+}
+
+function buildAiBatchPayload(texts, contextTexts = getAiBatchContext(texts)) {
+  const context = Array.from(new Set(contextTexts.filter(Boolean)))
+    .slice(-AI_TRANSLATION_CONTEXT_CUE_LIMIT);
+  return `${AI_BATCH_PAYLOAD_PREFIX}${JSON.stringify({
+    c: context,
+    i: texts.map((text, index) => [index, text])
+  })}`;
+}
+
+function parseAiBatchResponse(responseText, texts) {
+  const trimmed = String(responseText || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const objectStart = trimmed.indexOf('{');
+  const objectEnd = trimmed.lastIndexOf('}');
+  if (objectStart < 0 || objectEnd <= objectStart) return new Map();
+  try {
+    const parsed = JSON.parse(trimmed.slice(objectStart, objectEnd + 1));
+    if (!Array.isArray(parsed?.i)) return new Map();
+    const translations = new Map();
+    parsed.i.forEach((item) => {
+      if (!Array.isArray(item) || !Number.isInteger(item[0]) || item[0] < 0 ||
+          item[0] >= texts.length || typeof item[1] !== 'string') return;
+      const translation = item[1].trim();
+      if (translation && !translations.has(item[0])) translations.set(item[0], translation);
+    });
+    return translations;
+  } catch {
+    return new Map();
+  }
+}
+
+function getAppliedAiResult(sourceText) {
+  const source = translationSources.get(sourceText);
+  const text = preloadedTranslations.get(sourceText) || '';
+  return text && isAiTranslationSource(source) ? { text, source, cached: false } : null;
+}
+
+function isAiRetryCoolingDown(requestKey) {
+  const retryAt = failedAiTranslations.get(requestKey) || 0;
+  if (retryAt > Date.now()) return true;
+  failedAiTranslations.delete(requestKey);
+  return false;
+}
+
+function markAiRetryFailure(sourceText, generation) {
+  failedAiTranslations.set(
+    getAiRequestKey(sourceText, generation),
+    Date.now() + AI_TRANSLATION_RETRY_COOLDOWN_MS
+  );
+}
+
 function applyAiTranslation(sourceText, result, generation) {
   if (!result?.text || !isAiTranslationSource(result.source) || generation !== trackLoadGeneration ||
       !currentSettings.enabled || !currentSettings.aiEnabled) return false;
   const origin = result.cached ? 'cache' : 'live';
   aiTranslationOrigins.set(sourceText, origin);
+  failedAiTranslations.delete(getAiRequestKey(sourceText, generation));
   setAiIndicatorSessionState('enhanced', origin);
   preloadedTranslations.set(sourceText, result.text);
   translationSources.set(sourceText, result.source);
@@ -2662,11 +2735,17 @@ function discardPendingAiPrefetch() {
 
 function resetAiTranslationScheduling() {
   discardPendingAiPrefetch();
+  visibleAiGraceRequests.forEach((entry) => {
+    clearTimeout(entry.timer);
+    entry.resolve({ text: '', source: '' });
+  });
+  visibleAiGraceRequests.clear();
   if (pendingVisibleAiJob) pendingVisibleAiJob.resolve({ text: '', source: '' });
   activeAiPrefetchJob = null;
   activeVisibleAiJob = null;
   pendingVisibleAiJob = null;
   queuedAiTranslations.clear();
+  failedAiTranslations.clear();
   aiIndicatorSessionState = 'standby';
   aiIndicatorSessionOrigin = '';
 }
@@ -2718,15 +2797,16 @@ function runVisibleAiJob(job) {
     currentSettings.lang,
     'visible'
   ).then((result) => {
-    settledAiTranslations.add(job.requestKey);
-    if (!applyAiTranslation(job.sourceText, result, job.generation) &&
-        job.generation === trackLoadGeneration) {
+    if (applyAiTranslation(job.sourceText, result, job.generation)) {
+      settledAiTranslations.add(job.requestKey);
+    } else if (job.generation === trackLoadGeneration) {
+      markAiRetryFailure(job.sourceText, job.generation);
       setAiTranslationState(job.sourceText, 'standby');
     }
     return result;
   }).catch(() => {
-    settledAiTranslations.add(job.requestKey);
     if (job.generation === trackLoadGeneration) {
+      markAiRetryFailure(job.sourceText, job.generation);
       setAiTranslationState(job.sourceText, 'standby');
     }
     return { text: '', source: '' };
@@ -2744,7 +2824,50 @@ function runVisibleAiJob(job) {
   return job.promise;
 }
 
-function startAiEnhancement(sourceText, generation = trackLoadGeneration) {
+function waitForAiPrefetchOrPromote(sourceText, generation) {
+  const requestKey = getAiRequestKey(sourceText, generation);
+  if (visibleAiGraceRequests.has(requestKey)) return visibleAiGraceRequests.get(requestKey).promise;
+
+  let resolveGrace;
+  const entry = {
+    promise: new Promise((resolve) => { resolveGrace = resolve; }),
+    resolve: (result) => resolveGrace(result),
+    timer: null
+  };
+  const finish = (result) => {
+    if (visibleAiGraceRequests.get(requestKey) === entry) visibleAiGraceRequests.delete(requestKey);
+    entry.resolve(result || { text: '', source: '' });
+  };
+  entry.timer = setTimeout(() => {
+    const applied = getAppliedAiResult(sourceText);
+    if (applied || generation !== trackLoadGeneration) {
+      finish(applied);
+      return;
+    }
+
+    const activeBatch = activeAiPrefetchJob?.generation === generation &&
+      activeAiPrefetchJob.texts.includes(sourceText)
+      ? activeAiPrefetchJob
+      : null;
+    if (activeBatch) {
+      activeBatch.promise.then(() => {
+        const activeResult = getAppliedAiResult(sourceText);
+        if (activeResult) finish(activeResult);
+        else Promise.resolve(startAiEnhancement(sourceText, generation, { immediate: true }))
+          .then(finish, () => finish(null));
+      });
+      return;
+    }
+
+    removeFromPendingAiPrefetch(sourceText, generation);
+    Promise.resolve(startAiEnhancement(sourceText, generation, { immediate: true }))
+      .then(finish, () => finish(null));
+  }, AI_VISIBLE_BATCH_GRACE_MS);
+  visibleAiGraceRequests.set(requestKey, entry);
+  return entry.promise;
+}
+
+function startAiEnhancement(sourceText, generation = trackLoadGeneration, options = {}) {
   if (!sourceText || !currentSettings.aiEnabled || !currentSettings.showTrans ||
       generation !== trackLoadGeneration) return null;
   if (isAiTranslationSource(translationSources.get(sourceText))) return null;
@@ -2753,13 +2876,19 @@ function startAiEnhancement(sourceText, generation = trackLoadGeneration) {
   if (inflightAiTranslations.has(requestKey)) return inflightAiTranslations.get(requestKey);
   if (activeAiPrefetchJob?.generation === generation &&
       activeAiPrefetchJob.texts.includes(sourceText)) {
-    return activeAiPrefetchJob.promise;
+    return activeAiPrefetchJob.promise.then(() => getAppliedAiResult(sourceText) || { text: '', source: '' });
   }
   if (pendingVisibleAiJob?.requestKey === requestKey) return pendingVisibleAiJob.promise;
   if (settledAiTranslations.has(requestKey)) return null;
+  if (isAiRetryCoolingDown(requestKey)) return null;
 
-  // A visible cue must not sit behind a lookahead batch that has not started.
-  // Remove it from that batch and issue a dedicated high-priority request.
+  if (!options.immediate && pendingAiPrefetchJob?.generation === generation &&
+      pendingAiPrefetchJob.texts.includes(sourceText)) {
+    return waitForAiPrefetchOrPromote(sourceText, generation);
+  }
+
+  // After the bounded grace period, a still-pending visible cue becomes a
+  // dedicated high-priority request so seeks and cold starts remain responsive.
   removeFromPendingAiPrefetch(sourceText, generation);
   let resolveJob;
   const job = {
@@ -2876,7 +3005,7 @@ function startVisibleFileAiWindow(cueIndex, generation = trackLoadGeneration) {
     ? startAiEnhancement(visibleText, generation)
     : null;
 
-  // Auto-generated tracks already have a time-based 30-second refill window.
+  // Auto-generated tracks already have a time-based 60-second refill window.
   // Starting another sliding cue window here would duplicate that scheduler.
   if (isAutoGenerated) return visibleRequest;
 
@@ -2887,15 +3016,16 @@ function startVisibleFileAiWindow(cueIndex, generation = trackLoadGeneration) {
   if (!shouldRefreshLookahead) return visibleRequest;
   visibleFileAiWindowAnchorCueIndex = cueIndex;
 
-  // The visible cue is deliberately translated on its own. It should not be
-  // lost because an AI provider changed a separator in a lookahead batch, and
-  // it must take priority over subtitles that have not appeared yet. Refill
-  // only after half the anchored window has been consumed; a per-cue sliding
-  // window would otherwise degenerate into one new AI request for every cue.
+  // Refill only after half the anchored window has been consumed. The visible
+  // cue shares this prefetch when possible and only becomes a dedicated request
+  // after its bounded grace period; a per-cue sliding window would otherwise
+  // degenerate into one new provider request for every cue.
   const texts = [];
+  const lookaheadEnd = preloadedSentencesList[cueIndex]?.start + AI_TRANSLATION_LOOKAHEAD_SECONDS;
   for (let index = cueIndex + 1;
        index < Math.min(cueIndex + 1 + AI_TRANSLATION_BATCH_CUE_LIMIT, preloadedSentencesList.length);
        index += 1) {
+    if (preloadedSentencesList[index]?.start > lookaheadEnd) break;
     const text = preloadedSentencesList[index]?.text;
     if (!text || texts.includes(text) || isAiTranslationSource(translationSources.get(text)) ||
         settledAiTranslations.has(getAiRequestKey(text, generation)) ||
@@ -3027,7 +3157,7 @@ async function translateBatch(batch, generation, options = {}) {
   // Start the enhancement request immediately. Google remains the first
   // visible provider, while Gemini can finish independently and take over.
   if (currentSettings.aiEnabled && options.enableAi !== false) {
-    startAiBatchEnhancement(batch, generation, delimiter);
+    startAiBatchEnhancement(batch, generation);
     if (!currentSettings.aiFallback) {
       // Oversized single cues cannot safely enter an AI request. They retain
       // standard translation even in AI-only mode so subtitles never vanish.
@@ -3089,6 +3219,67 @@ function getAutoTranslationWindowTexts(playhead) {
   return windowTexts;
 }
 
+async function translateAiBatchItems(texts, contextTexts, generation, allowRetry = true) {
+  if (!texts.length || generation !== trackLoadGeneration) return [];
+  texts.forEach((sourceText) => setAiTranslationState(sourceText, 'processing'));
+
+  const result = await requestAiTranslation(
+    buildAiBatchPayload(texts, contextTexts),
+    currentSettings.lang,
+    'prefetch'
+  ).catch(() => ({ text: '', source: '' }));
+  if (!result?.text || generation !== trackLoadGeneration || !isAiTranslationSource(result.source)) {
+    if (generation === trackLoadGeneration) {
+      texts.forEach((sourceText) => {
+        markAiRetryFailure(sourceText, generation);
+        setAiTranslationState(sourceText, 'standby');
+      });
+    }
+    return [];
+  }
+
+  const translations = parseAiBatchResponse(result.text, texts);
+  const successfulTexts = [];
+  texts.forEach((sourceText, index) => {
+    const translation = translations.get(index);
+    if (!translation) {
+      setAiTranslationState(sourceText, 'standby');
+      return;
+    }
+    if (applyAiTranslation(
+      sourceText,
+      { text: translation, source: result.source, cached: result.cached },
+      generation
+    )) {
+      settledAiTranslations.add(getAiRequestKey(sourceText, generation));
+      successfulTexts.push(sourceText);
+    }
+  });
+
+  const missingTexts = texts.filter((sourceText) => !successfulTexts.includes(sourceText));
+  if (allowRetry && missingTexts.length && generation === trackLoadGeneration) {
+    const retryTexts = missingTexts.slice(0, AI_BATCH_RETRY_CUE_LIMIT);
+    const retrySuccesses = await translateAiBatchItems(
+      retryTexts,
+      getAiBatchContext(retryTexts),
+      generation,
+      false
+    );
+    successfulTexts.push(...retrySuccesses);
+  }
+  if (generation === trackLoadGeneration) {
+    missingTexts
+      .filter((sourceText) => !successfulTexts.includes(sourceText))
+      .forEach((sourceText) => markAiRetryFailure(sourceText, generation));
+  }
+  console.debug('lasDoscas: AI batch mapping', {
+    requested: texts.length,
+    mapped: successfulTexts.length,
+    retried: allowRetry ? Math.min(missingTexts.length, AI_BATCH_RETRY_CUE_LIMIT) : 0
+  });
+  return successfulTexts;
+}
+
 function runAiPrefetchJob(job) {
   if (job.generation !== trackLoadGeneration || isOrphaned || !currentSettings.enabled) {
     job.resolve([]);
@@ -3101,55 +3292,29 @@ function runAiPrefetchJob(job) {
     queuedAiTranslations.delete(getAiRequestKey(sourceText, job.generation));
     setAiTranslationState(sourceText, 'processing');
   });
-  const requestKey = `${getAiRequestKey(job.texts.join(job.delimiter), job.generation)}|batch`;
-  const request = requestAiTranslation(
-    job.texts.join(job.delimiter),
-    currentSettings.lang,
-    'prefetch'
-  ).then((result) => {
-    if (!result?.text || job.generation !== trackLoadGeneration ||
-        !isAiTranslationSource(result.source)) {
-      if (job.generation === trackLoadGeneration) {
-        job.texts.forEach((sourceText) => setAiTranslationState(sourceText, 'standby'));
-      }
-      return result;
-    }
-
-    const parts = result.text.split(/\s*\[\[\[\s*LASDOSCAS_BREAK_9F2D\s*\]\]\]\s*/i);
-    if (parts.length !== job.texts.length) {
-      job.texts.forEach((sourceText) => setAiTranslationState(sourceText, 'standby'));
-      return result;
-    }
-    job.texts.forEach((sourceText, index) => {
-      const translation = parts[index]?.trim();
-      if (translation) {
-        applyAiTranslation(
-          sourceText,
-          { text: translation, source: result.source, cached: result.cached },
-          job.generation
-        );
-      } else {
-        setAiTranslationState(sourceText, 'standby');
-      }
-    });
-    return result;
-  }).catch(() => {
+  const payload = buildAiBatchPayload(job.texts, job.contextTexts);
+  const requestKey = `${getAiRequestKey(payload, job.generation)}|batch`;
+  const request = translateAiBatchItems(
+    job.texts,
+    job.contextTexts,
+    job.generation
+  ).catch(() => {
     if (job.generation === trackLoadGeneration) {
-      job.texts.forEach((sourceText) => setAiTranslationState(sourceText, 'standby'));
+      job.texts.forEach((sourceText) => {
+        markAiRetryFailure(sourceText, job.generation);
+        setAiTranslationState(sourceText, 'standby');
+      });
     }
-    return { text: '', source: '' };
-  }).then((result) => {
-    job.texts.forEach((sourceText) => {
-      settledAiTranslations.add(getAiRequestKey(sourceText, job.generation));
-    });
+    return [];
+  }).then((successfulTexts) => {
     inflightAiTranslations.delete(requestKey);
-    job.resolve([result]);
+    job.resolve(successfulTexts);
     if (activeAiPrefetchJob === job) {
       activeAiPrefetchJob = null;
       maybeStartNextAiJob();
       refreshAiIndicatorSessionState();
     }
-    return result;
+    return successfulTexts;
   });
   inflightAiTranslations.set(requestKey, request);
   return job.promise;
@@ -3158,7 +3323,6 @@ function runAiPrefetchJob(job) {
 function startAiBatchEnhancement(
   batch,
   generation,
-  delimiter = '\n\n[[[LASDOSCAS_BREAK_9F2D]]]\n\n',
   options = {}
 ) {
   if (!batch.length || !currentSettings.aiEnabled || generation !== trackLoadGeneration) return null;
@@ -3167,19 +3331,20 @@ function startAiBatchEnhancement(
     ? new Set(activeAiPrefetchJob.texts)
     : new Set();
   const texts = [];
-  let batchLength = 0;
+  const contextTexts = options.contextTexts || getAiBatchContext(batch);
   for (const sourceText of batch) {
     if (!sourceText) continue;
     const requestKey = getAiRequestKey(sourceText, generation);
-    const nextLength = batchLength + sourceText.length + delimiter.length;
+    const nextTexts = [...texts, sourceText];
+    const nextLength = buildAiBatchPayload(nextTexts, contextTexts).length;
     if (texts.includes(sourceText) || sourceText.length > AI_TRANSLATION_MAX_CHARS ||
         texts.length >= AI_TRANSLATION_BATCH_CUE_LIMIT || nextLength > AI_TRANSLATION_MAX_CHARS ||
         isAiTranslationSource(translationSources.get(sourceText)) ||
-        settledAiTranslations.has(requestKey) || inflightAiTranslations.has(requestKey) ||
+        settledAiTranslations.has(requestKey) || isAiRetryCoolingDown(requestKey) ||
+        inflightAiTranslations.has(requestKey) ||
         pendingVisibleAiJob?.requestKey === requestKey ||
         activeTexts.has(sourceText)) continue;
     texts.push(sourceText);
-    batchLength = nextLength;
   }
   if (!texts.length) return null;
   if ((activeAiPrefetchJob || activeVisibleAiJob) && pendingAiPrefetchJob &&
@@ -3191,7 +3356,7 @@ function startAiBatchEnhancement(
   const job = {
     texts,
     generation,
-    delimiter,
+    contextTexts,
     promise: new Promise((resolve) => { resolveJob = resolve; }),
     resolve: (result) => resolveJob(result)
   };
@@ -3234,7 +3399,6 @@ async function fillAutoTranslationWindow(generation, playhead, windowSequence) {
     startAiBatchEnhancement(
       windowTexts.slice(0, AI_TRANSLATION_BATCH_CUE_LIMIT),
       generation,
-      '\n\n[[[LASDOSCAS_BREAK_9F2D]]]\n\n',
       { preservePending: true }
     );
     for (let index = 0; index < windowTexts.length; index += AI_TRANSLATION_BATCH_CUE_LIMIT) {
@@ -3257,15 +3421,26 @@ async function fillAutoTranslationWindow(generation, playhead, windowSequence) {
 
 function refreshAutoTranslationWindow(playhead, force = false) {
   if (!isAutoGenerated || !currentSettings.showTrans) return null;
-  if (!force && autoTranslationWindowAnchor >= 0 &&
-      Math.abs(playhead - autoTranslationWindowAnchor) < AUTO_TRANSLATION_WINDOW_REFRESH_SECONDS) {
-    return null;
+  const nearestCueIndex = Math.max(0, findNextCueIndexAtTime(playhead));
+  if (!force && autoTranslationWindowAnchor >= 0) {
+    const anchorDistance = Math.abs(playhead - autoTranslationWindowAnchor);
+    if (currentSettings.aiEnabled && autoTranslationAiAnchorCueIndex >= 0) {
+      const cueProgress = nearestCueIndex - autoTranslationAiAnchorCueIndex;
+      const refillStride = Math.max(1, Math.floor(AI_TRANSLATION_BATCH_CUE_LIMIT / 2));
+      if (cueProgress >= 0 && cueProgress < refillStride &&
+          anchorDistance < AUTO_TRANSLATION_LOOKAHEAD_SECONDS / 2) {
+        return null;
+      }
+    } else if (anchorDistance < AUTO_TRANSLATION_WINDOW_REFRESH_SECONDS) {
+      return null;
+    }
   }
 
   const movedBeyondCurrentWindow = autoTranslationWindowAnchor >= 0 &&
     Math.abs(playhead - autoTranslationWindowAnchor) > AUTO_TRANSLATION_LOOKAHEAD_SECONDS;
   if (movedBeyondCurrentWindow) discardPendingAiPrefetch();
   autoTranslationWindowAnchor = playhead;
+  autoTranslationAiAnchorCueIndex = currentSettings.aiEnabled ? nearestCueIndex : -1;
   const generation = trackLoadGeneration;
   const windowSequence = ++autoTranslationWindowSequence;
   const refillPromise = fillAutoTranslationWindow(generation, playhead, windowSequence);

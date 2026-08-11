@@ -287,14 +287,48 @@ test('AI requests are deduplicated and batch-preload is capped', () => {
   assert.match(contentSource, /settledAiTranslations\.has\(requestKey\)/);
   assert.match(contentSource, /pendingVisibleAiJob\?\.requestKey === requestKey/);
   assert.match(contentSource, /const STANDARD_TRANSLATION_BATCH_SIZE = 16/);
-  assert.match(contentSource, /const AI_TRANSLATION_BATCH_CUE_LIMIT = 12/);
+  assert.match(contentSource, /const AI_TRANSLATION_BATCH_CUE_LIMIT = 24/);
   assert.match(contentSource, /const AI_TRANSLATION_MAX_CHARS = 4500/);
+  assert.match(contentSource, /const AI_TRANSLATION_CONTEXT_CUE_LIMIT = 3/);
+  assert.match(contentSource, /const AI_VISIBLE_BATCH_GRACE_MS = 650/);
+  assert.match(contentSource, /const AI_BATCH_RETRY_CUE_LIMIT = 8/);
+  assert.match(contentSource, /const AI_TRANSLATION_RETRY_COOLDOWN_MS = 30 \* 1000/);
+  assert.match(contentSource, /const AI_BATCH_PAYLOAD_PREFIX = 'LASDOSCAS_BATCH_V2\\n'/);
   assert.match(contentSource, /let activeAiPrefetchJob = null/);
   assert.match(contentSource, /let pendingAiPrefetchJob = null/);
   assert.match(contentSource, /let activeVisibleAiJob = null/);
   assert.match(contentSource, /let pendingVisibleAiJob = null/);
   assert.match(contentSource, /pendingAiPrefetchJob\.resolve\(\[\]\)/);
   assert.match(contentSource, /pendingVisibleAiJob\.resolve\(\{ text: '', source: '' \}\)/);
+});
+
+test('AI batches use compact ids and accept validated partial JSON results', () => {
+  const context = { JSON, Map, Set };
+  vm.createContext(context);
+  vm.runInContext([
+    "const AI_BATCH_PAYLOAD_PREFIX = 'LASDOSCAS_BATCH_V2\\n';",
+    'const AI_TRANSLATION_CONTEXT_CUE_LIMIT = 3;',
+    extractBetween('function buildAiBatchPayload', 'function getAppliedAiResult'),
+    `globalThis.batchProtocol = { buildAiBatchPayload, parseAiBatchResponse };`
+  ].join('\n'), context);
+
+  const texts = ['First line', 'Second line', 'Third line'];
+  const payload = context.batchProtocol.buildAiBatchPayload(texts, ['old', 'near']);
+  assert.match(payload, /^LASDOSCAS_BATCH_V2\n/);
+  const parsedPayload = JSON.parse(payload.slice('LASDOSCAS_BATCH_V2\n'.length));
+  assert.deepEqual(Array.from(parsedPayload.c), ['old', 'near']);
+  assert.deepEqual(Array.from(parsedPayload.i, (item) => Array.from(item)), [
+    [0, 'First line'],
+    [1, 'Second line'],
+    [2, 'Third line']
+  ]);
+
+  const translations = context.batchProtocol.parseAiBatchResponse(
+    '```json\n{"i":[[2,"第三"],[0,"第一"],[2,"重复"],[9,"越界"]]}\n```',
+    texts
+  );
+  assert.deepEqual(Array.from(translations.entries()), [[2, '第三'], [0, '第一']]);
+  assert.equal(translations.has(1), false);
 });
 
 test('standard-seeded authored cues still enter AI enhancement', () => {
@@ -325,19 +359,33 @@ test('queued AI work stays standby until a provider request starts', () => {
   );
 });
 
-test('visible AI scheduling promotes the latest cue without building a request backlog', async () => {
-  const context = { Map, Set, Promise };
+test('visible AI scheduling gives pending prefetch a bounded grace period', () => {
+  const context = {
+    Map,
+    Set,
+    Promise,
+    JSON,
+    setTimeout(callback) { return { callback }; },
+    clearTimeout() {}
+  };
   vm.createContext(context);
   vm.runInContext([
     'const AI_TRANSLATION_MAX_CHARS = 4500;',
-    'const AI_TRANSLATION_BATCH_CUE_LIMIT = 12;',
+    'const AI_TRANSLATION_BATCH_CUE_LIMIT = 24;',
+    'const AI_TRANSLATION_CONTEXT_CUE_LIMIT = 3;',
+    'const AI_VISIBLE_BATCH_GRACE_MS = 650;',
+    'const AI_BATCH_RETRY_CUE_LIMIT = 8;',
+    "const AI_BATCH_PAYLOAD_PREFIX = 'LASDOSCAS_BATCH_V2\\n';",
     'let trackLoadGeneration = 1;',
     'let isOrphaned = false;',
     'const currentSettings = { enabled: true, aiEnabled: true, showTrans: true, lang: "zh-CN" };',
+    'const preloadedTranslations = new Map();',
+    'const preloadedSentencesList = [];',
     'const translationSources = new Map();',
     'const settledAiTranslations = new Set();',
     'const queuedAiTranslations = new Set();',
     'const inflightAiTranslations = new Map();',
+    'const visibleAiGraceRequests = new Map();',
     'let activeAiPrefetchJob = null;',
     'let pendingAiPrefetchJob = null;',
     'let activeVisibleAiJob = null;',
@@ -346,6 +394,12 @@ test('visible AI scheduling promotes the latest cue without building a request b
     'const states = new Map();',
     'const requests = [];',
     'function getAiRequestKey(text, generation) { return `ai|${generation}|${text}`; }',
+    'function getAiBatchContext() { return []; }',
+    'function buildAiBatchPayload(texts) { return `batch:${texts.join("|")}`; }',
+    'function parseAiBatchResponse() { return new Map(); }',
+    'function getAppliedAiResult() { return null; }',
+    'function isAiRetryCoolingDown() { return false; }',
+    'function markAiRetryFailure() {}',
     'function isAiTranslationSource(source) { return source === "gemini"; }',
     'function setAiTranslationState(text, state) { states.set(text, state); }',
     'function setAiIndicatorSessionState(state) { if (aiIndicatorSessionState !== "enhanced") aiIndicatorSessionState = state; }',
@@ -362,7 +416,8 @@ test('visible AI scheduling promotes the latest cue without building a request b
         activeVisible: activeVisibleAiJob?.sourceText || '',
         pendingVisible: pendingVisibleAiJob?.sourceText || '',
         activePrefetch: activeAiPrefetchJob?.texts || [],
-        pendingPrefetch: pendingAiPrefetchJob?.texts || []
+        pendingPrefetch: pendingAiPrefetchJob?.texts || [],
+        graceCount: visibleAiGraceRequests.size
       })
     };`
   ].join('\n'), context);
@@ -377,33 +432,22 @@ test('visible AI scheduling promotes the latest cue without building a request b
   const preservedPrefetch = scheduler.startAiBatchEnhancement(
     ['far-future'],
     1,
-    '\n\n[[[LASDOSCAS_BREAK_9F2D]]]\n\n',
     { preservePending: true }
   );
   assert.equal(preservedPrefetch, queuedPrefetch);
   assert.deepEqual(Array.from(scheduler.snapshot().pendingPrefetch), ['future']);
 
-  const promoted = scheduler.startAiEnhancement('future');
+  scheduler.startAiEnhancement('future');
   assert.equal(scheduler.requests.length, 1);
-  assert.equal(scheduler.snapshot().pendingVisible, 'future');
-  assert.deepEqual(Array.from(scheduler.snapshot().pendingPrefetch), []);
-  assert.equal(scheduler.states.get('future'), 'standby');
-
-  scheduler.requests[0].resolve({ text: '当前', source: 'gemini' });
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(await firstVisible.then((result) => result.text), '当前');
-  assert.equal(scheduler.requests.length, 2);
-  assert.equal(scheduler.requests[1].text, 'future');
-  assert.equal(scheduler.requests[1].priority, 'visible');
-  assert.equal(scheduler.states.get('future'), 'processing');
-
-  scheduler.requests[1].resolve({ text: '未来', source: 'gemini' });
-  assert.equal(await promoted.then((result) => result.text), '未来');
-  assert.deepEqual(Array.from(await queuedPrefetch), []);
-  assert.equal(scheduler.snapshot().activeVisible, '');
+  assert.equal(scheduler.snapshot().pendingVisible, '');
+  assert.deepEqual(Array.from(scheduler.snapshot().pendingPrefetch), ['future']);
+  assert.equal(scheduler.snapshot().graceCount, 1);
+  assert.notEqual(scheduler.states.get('future'), 'processing');
+  void firstVisible;
+  void queuedPrefetch;
 });
 
-test('visible file cue gets a dedicated request and anchored lookahead batching', () => {
+test('visible file cue uses grace-aware enhancement and anchored lookahead batching', () => {
   const visibleWindowBody = extractBetween(
     'function startVisibleFileAiWindow',
     'function renderFileCue()'
@@ -420,7 +464,7 @@ test('anchored AI lookahead does not degrade into one refill per cue', () => {
   const context = {};
   vm.createContext(context);
   vm.runInContext([
-    'const AI_TRANSLATION_BATCH_CUE_LIMIT = 12;',
+    'const AI_TRANSLATION_BATCH_CUE_LIMIT = 24;',
     extractBetween(
       'function shouldRefreshVisibleFileAiLookahead',
       'function startVisibleFileAiWindow'
@@ -435,7 +479,7 @@ test('anchored AI lookahead does not degrade into one refill per cue', () => {
     refreshedAt.push(cueIndex);
     anchor = cueIndex;
   }
-  assert.deepEqual(refreshedAt, [0, 6, 12, 18]);
+  assert.deepEqual(refreshedAt, [0, 12]);
 });
 
 test('auto-generated tracks prioritize the visible cue before time-window refill', () => {
@@ -469,8 +513,66 @@ test('auto-generated windows only enqueue the nearest AI batch', () => {
     'function refreshAutoTranslationWindow',
     'async function warmAutoFileTranslations'
   );
+  assert.match(refreshBody, /const refillStride = Math\.max\(1, Math\.floor\(AI_TRANSLATION_BATCH_CUE_LIMIT \/ 2\)\)/);
+  assert.match(refreshBody, /cueProgress >= 0 && cueProgress < refillStride/);
+  assert.match(refreshBody, /anchorDistance < AUTO_TRANSLATION_LOOKAHEAD_SECONDS \/ 2/);
   assert.match(refreshBody, /Math\.abs\(playhead - autoTranslationWindowAnchor\) > AUTO_TRANSLATION_LOOKAHEAD_SECONDS/);
   assert.match(refreshBody, /if \(movedBeyondCurrentWindow\) discardPendingAiPrefetch\(\)/);
+  assert.match(contentSource, /autoTranslationAiAnchorCueIndex = -1/);
+});
+
+test('auto-generated AI refill waits for half a batch or half the time window', () => {
+  const context = {
+    Promise,
+    console: { info() {} },
+    nearestCueIndex: 0,
+    refillCalls: 0,
+    discarded: 0
+  };
+  vm.createContext(context);
+  vm.runInContext([
+    'const AUTO_TRANSLATION_WINDOW_REFRESH_SECONDS = 5;',
+    'const AUTO_TRANSLATION_LOOKAHEAD_SECONDS = 60;',
+    'const AI_TRANSLATION_BATCH_CUE_LIMIT = 24;',
+    'let isAutoGenerated = true;',
+    'const currentSettings = { showTrans: true, aiEnabled: true, enabled: true };',
+    'let autoTranslationWindowAnchor = -1;',
+    'let autoTranslationAiAnchorCueIndex = -1;',
+    'let autoTranslationWindowSequence = 0;',
+    'let trackLoadGeneration = 1;',
+    'let isOrphaned = false;',
+    'function findNextCueIndexAtTime() { return globalThis.nearestCueIndex; }',
+    'function discardPendingAiPrefetch() { globalThis.discarded += 1; }',
+    'function fillAutoTranslationWindow() { globalThis.refillCalls += 1; return Promise.resolve(); }',
+    extractBetween('function refreshAutoTranslationWindow', 'async function warmAutoFileTranslations'),
+    'globalThis.refresh = refreshAutoTranslationWindow;'
+  ].join('\n'), context);
+
+  assert.ok(context.refresh(0, true));
+  context.nearestCueIndex = 11;
+  assert.equal(context.refresh(29), null);
+  assert.equal(context.refillCalls, 1);
+
+  context.nearestCueIndex = 12;
+  assert.ok(context.refresh(29));
+  assert.equal(context.refillCalls, 2);
+
+  context.nearestCueIndex = 15;
+  assert.ok(context.refresh(60));
+  assert.equal(context.refillCalls, 3);
+});
+
+test('batch failures only settle successfully mapped cues and retry a bounded subset', () => {
+  const batchBody = extractBetween(
+    'async function translateAiBatchItems',
+    'function isAiTranslationScheduled'
+  );
+  assert.match(batchBody, /settledAiTranslations\.add\(getAiRequestKey\(sourceText, generation\)\)/);
+  assert.doesNotMatch(batchBody, /job\.texts\.forEach\([\s\S]*settledAiTranslations\.add/);
+  assert.match(batchBody, /missingTexts\.slice\(0, AI_BATCH_RETRY_CUE_LIMIT\)/);
+  assert.match(batchBody, /translateAiBatchItems\([\s\S]*false/);
+  assert.match(batchBody, /markAiRetryFailure\(sourceText, generation\)/);
+  assert.match(contentSource, /if \(isAiRetryCoolingDown\(requestKey\)\) return null/);
 });
 
 test('AI fallback and live ASR prefetch are explicitly bounded', () => {
@@ -493,7 +595,9 @@ test('AI indicator distinguishes processing, standby, and enhanced states', () =
   assert.match(contentSource, /setAiTranslationState\(sourceText, 'processing'\)/);
   assert.match(contentSource, /setAiTranslationState\(sourceText, 'standby'\)/);
   assert.match(contentSource, /aiTranslationStates\.set\(sourceText, 'enhanced'\)/);
-  assert.match(styleSource, /\.lasdoscas-ai-indicator img[\s\S]*width: 32px !important;[\s\S]*height: 32px !important;/);
+  assert.match(styleSource, /\.lasdoscas-ai-indicator \{[\s\S]*width: 34px !important;[\s\S]*height: 34px !important;/);
+  assert.match(styleSource, /\.lasdoscas-copy-button \{[\s\S]*width: 34px !important;[\s\S]*height: 34px !important;/);
+  assert.match(styleSource, /\.lasdoscas-ai-indicator img[\s\S]*inset: 1px !important;[\s\S]*width: 32px !important;[\s\S]*height: 32px !important;/);
   assert.match(styleSource, /\[data-ai-state="off"\] \.lasdoscas-ai-off-icon \{\s*display: block !important;\s*\}/);
   assert.match(styleSource, /\[data-ai-state="processing"\] \.lasdoscas-ai-loading-icon \{\s*display: block !important;\s*\}/);
   assert.match(styleSource, /\[data-ai-state="standby"\] \.lasdoscas-ai-standby-icon \{\s*display: block !important;\s*\}/);

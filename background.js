@@ -28,6 +28,7 @@ const AI_PROVIDER_CONFIG = {
   }
 };
 const AI_PROVIDER_STORAGE_KEY = 'aiProvider';
+const AI_BATCH_PAYLOAD_PREFIX = 'LASDOSCAS_BATCH_V2\n';
 const OPENAI_COMPATIBLE_TRANSLATION_TIMEOUT_MS = 30000;
 const GEMINI_TRANSLATION_TIMEOUT_MS = 30000;
 // Keep the default traffic below the common free-tier RPM range. A project
@@ -265,20 +266,65 @@ function createProviderHttpError(provider, status) {
   return error;
 }
 
+function parseAiBatchPayload(text) {
+  if (!text.startsWith(AI_BATCH_PAYLOAD_PREFIX)) return null;
+  try {
+    const payload = JSON.parse(text.slice(AI_BATCH_PAYLOAD_PREFIX.length));
+    const context = Array.isArray(payload?.c)
+      ? payload.c.filter((item) => typeof item === 'string' && item).slice(-3)
+      : [];
+    const items = Array.isArray(payload?.i)
+      ? payload.i.filter((item) =>
+          Array.isArray(item) && Number.isInteger(item[0]) && typeof item[1] === 'string' && item[1]
+        )
+      : [];
+    return items.length ? { context, items } : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildTranslationPrompt(text, sourceLang, targetLang) {
-  const delimiterInstruction = text.includes('[[[LASDOSCAS_BREAK_9F2D]]]')
-    ? 'The input contains [[[LASDOSCAS_BREAK_9F2D]]] separators. Preserve every separator exactly, in the same order, with no extra separators.'
-    : '';
+  const batch = parseAiBatchPayload(text);
+  if (batch) {
+    return [
+      `Translate the subtitle items from ${sourceLang || 'their detected language'} to ${targetLang}.`,
+      'Use natural subtitle language and preserve meaning, names, numbers, tone, and punctuation.',
+      'Use the context only to resolve pronouns, terminology, idioms, and spoken-language transcription errors. Do not translate or return the context.',
+      'Return exactly one JSON object in the compact form {"i":[[id,"translation"],...]}.',
+      'Return every input id exactly once and in the original order. Do not merge, split, omit, renumber, explain, or use Markdown.',
+      `Context: ${JSON.stringify(batch.context)}`,
+      `Items: ${JSON.stringify(batch.items)}`
+    ].join('\n');
+  }
+
   return [
     `Translate the subtitle text from ${sourceLang || 'its detected language'} to ${targetLang}.`,
     'Use natural subtitle language, preserve meaning, names, numbers, tone, and punctuation.',
     'Infer domain-specific and idiomatic meanings from the full sentence; do not translate an ambiguous word literally when its surrounding actions make the intended context clear.',
     'The input may be imperfect spoken-language transcription. Preserve the intended meaning without explaining or correcting the source text.',
     'Return only the translation. Do not explain, summarize, add labels, or use Markdown.',
-    delimiterInstruction,
     '',
     text
   ].filter(Boolean).join('\n');
+}
+
+function logAiUsage(provider, text, data) {
+  const batchSize = parseAiBatchPayload(text)?.items.length || 1;
+  const usage = provider === 'gemini'
+    ? {
+        inputTokens: Number(data?.usageMetadata?.promptTokenCount) || 0,
+        outputTokens: Number(data?.usageMetadata?.candidatesTokenCount) || 0,
+        totalTokens: Number(data?.usageMetadata?.totalTokenCount) || 0,
+        cachedInputTokens: Number(data?.usageMetadata?.cachedContentTokenCount) || 0
+      }
+    : {
+        inputTokens: Number(data?.usage?.prompt_tokens) || 0,
+        outputTokens: Number(data?.usage?.completion_tokens) || 0,
+        totalTokens: Number(data?.usage?.total_tokens) || 0,
+        cachedInputTokens: Number(data?.usage?.prompt_tokens_details?.cached_tokens) || 0
+      };
+  console.debug('lasDoscas: AI request usage', { provider, batchSize, ...usage });
 }
 
 async function translateWithOpenAICompatible(
@@ -303,23 +349,26 @@ async function translateWithOpenAICompatible(
       headers['HTTP-Referer'] = 'https://github.com/lasDoscas';
       headers['X-Title'] = 'lasDoscas';
     }
+    const isBatch = Boolean(parseAiBatchPayload(text));
+    const requestBody = {
+      model: config.model,
+      messages: [{ role: 'user', content: buildTranslationPrompt(text, sourceLang, targetLang) }],
+      temperature: 0.2,
+      // A 24-cue batch remains bounded on input. Leave enough output room for
+      // the compact id mapping without allowing unbounded provider responses.
+      max_tokens: isBatch ? 4096 : 2048
+    };
+    if (isBatch) requestBody.response_format = { type: 'json_object' };
     const response = await fetch(config.endpoint, {
       method: 'POST',
       headers,
       cache: 'no-store',
       signal: controller.signal,
-      body: JSON.stringify({
-        model: config.model,
-        messages: [{ role: 'user', content: buildTranslationPrompt(text, sourceLang, targetLang) }],
-        temperature: 0.2,
-        // Subtitle batches are intentionally bounded in content.js. Keep a
-        // finite response ceiling so a provider cannot spend a large amount
-        // of output tokens on explanations or repeated text.
-        max_tokens: 2048
-      })
+      body: JSON.stringify(requestBody)
     });
     if (!response.ok) throw createProviderHttpError(provider, response.status);
     const data = await response.json();
+    logAiUsage(provider, text, data);
     const translation = String(data?.choices?.[0]?.message?.content || '').trim();
     if (!translation) throw new Error(`empty_${provider}_response`);
     return translation;
@@ -339,19 +388,8 @@ async function translateWithGemini(
   const apiKey = apiKeyOverride || await getGeminiApiKey();
   if (!apiKey) throw new Error('missing_key');
 
-  const delimiterInstruction = text.includes('[[[LASDOSCAS_BREAK_9F2D]]]')
-    ? 'The input contains [[[LASDOSCAS_BREAK_9F2D]]] separators. Preserve every separator exactly, in the same order, with no extra separators.'
-    : '';
-  const prompt = [
-    `Translate the subtitle text from ${sourceLang || 'its detected language'} to ${targetLang}.`,
-    'Use natural subtitle language, preserve meaning, names, numbers, tone, and punctuation.',
-    'Infer domain-specific and idiomatic meanings from the full sentence; do not translate an ambiguous word literally when its surrounding actions make the intended context clear.',
-    'The input may be imperfect spoken-language transcription. Preserve the intended meaning without explaining or correcting the source text.',
-    'Return only the translation. Do not explain, summarize, add labels, or use Markdown.',
-    delimiterInstruction,
-    '',
-    text
-  ].filter(Boolean).join('\n');
+  const batch = parseAiBatchPayload(text);
+  const prompt = buildTranslationPrompt(text, sourceLang, targetLang);
 
   const requestOnce = () => queueGeminiRequest(async (model) => {
     const controller = new AbortController();
@@ -371,7 +409,8 @@ async function translateWithGemini(
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.2,
-              maxOutputTokens: 8192
+              maxOutputTokens: batch ? 4096 : 2048,
+              ...(batch ? { responseMimeType: 'application/json' } : {})
             }
           })
         }
@@ -385,6 +424,7 @@ async function translateWithGemini(
         throw createGeminiHttpError(response.status, retryAfterMs);
       }
       const data = await response.json();
+      logAiUsage('gemini', text, data);
       const translation = data?.candidates?.[0]?.content?.parts
         ?.map((part) => part.text || '')
         .join('')
@@ -420,21 +460,24 @@ async function translateWithGemini(
 }
 
 function getGeminiTranslation(text, sourceLang, targetLang, priority = 'visible') {
+  const isBatch = Boolean(parseAiBatchPayload(text));
   const cacheKey = [
     'gemini',
     String(sourceLang || '').toLowerCase(),
     String(targetLang || '').toLowerCase(),
     text
   ].join('\u0000');
-  const cachedTranslation = getCachedTranslation(cacheKey);
-  if (cachedTranslation !== null) {
-    return Promise.resolve({ translation: cachedTranslation, cached: true });
+  if (!isBatch) {
+    const cachedTranslation = getCachedTranslation(cacheKey);
+    if (cachedTranslation !== null) {
+      return Promise.resolve({ translation: cachedTranslation, cached: true });
+    }
   }
   if (geminiInflightTranslations.has(cacheKey)) return geminiInflightTranslations.get(cacheKey);
 
   const request = translateWithGemini(text, sourceLang, targetLang, '', true, priority)
     .then((translation) => {
-      cacheTranslation(cacheKey, translation, text.length);
+      if (!isBatch) cacheTranslation(cacheKey, translation, text.length);
       return { translation, cached: false };
     })
     .finally(() => geminiInflightTranslations.delete(cacheKey));
@@ -453,6 +496,7 @@ function getAiTranslation(text, sourceLang, targetLang, providerOverride = '', p
       }));
     }
     if (!AI_PROVIDER_CONFIG[provider]) throw new Error('unsupported_provider');
+    const isBatch = Boolean(parseAiBatchPayload(text));
 
     const cacheKey = [
       provider,
@@ -460,13 +504,15 @@ function getAiTranslation(text, sourceLang, targetLang, providerOverride = '', p
       String(targetLang || '').toLowerCase(),
       text
     ].join('\u0000');
-    const cachedTranslation = getCachedTranslation(cacheKey);
-    if (cachedTranslation !== null) {
-      return { translation: cachedTranslation, source: provider, cached: true };
+    if (!isBatch) {
+      const cachedTranslation = getCachedTranslation(cacheKey);
+      if (cachedTranslation !== null) {
+        return { translation: cachedTranslation, source: provider, cached: true };
+      }
     }
     return translateWithOpenAICompatible(provider, text, sourceLang, targetLang)
       .then((translation) => {
-        cacheTranslation(cacheKey, translation, text.length);
+        if (!isBatch) cacheTranslation(cacheKey, translation, text.length);
         return { translation, source: provider, cached: false };
       });
   });
