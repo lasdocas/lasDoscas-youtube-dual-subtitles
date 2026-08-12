@@ -70,6 +70,77 @@ function loadPlayerScaleCalculator() {
   return context.calculatePlayerScaleForTest;
 }
 
+function loadLiveAsrIndicatorHarness() {
+  const label = { textContent: '' };
+  const tooltip = { textContent: '' };
+  const indicatorAttributes = new Map();
+  const wrapperAttributes = new Map();
+  const indicator = {
+    querySelector(selector) {
+      if (selector === '.lasdoscas-live-asr-label') return label;
+      if (selector === '.lasdoscas-live-asr-tooltip') return tooltip;
+      return null;
+    },
+    setAttribute(name, value) {
+      indicatorAttributes.set(name, value);
+    }
+  };
+  const wrapper = {
+    querySelector(selector) {
+      return selector === '.lasdoscas-live-asr-indicator' ? indicator : null;
+    },
+    setAttribute(name, value) {
+      wrapperAttributes.set(name, value);
+    }
+  };
+  const timers = [];
+  const context = {
+    currentSettings: { uiLang: 'zh' },
+    liveAsrUiText: {
+      zh: { label: '实时识别', notice: '中文说明' },
+      en: { label: 'Live transcription', notice: 'English notice' },
+      es: { label: 'Transcripción en vivo', notice: 'Aviso en español' }
+    },
+    document: { querySelector: () => wrapper },
+    window: { location: { href: 'https://www.youtube.com/watch?v=video-a' } },
+    currentVideoId: 'video-a',
+    setTimeout(callback, delay) {
+      const timer = { callback, delay, cleared: false };
+      timers.push(timer);
+      return timer;
+    },
+    clearTimeout(timer) {
+      if (timer) timer.cleared = true;
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext([
+    'const LIVE_ASR_NOTICE_DURATION_MS = 5000;',
+    'let liveAsrConfirmed = false;',
+    'let liveAsrNoticeOpen = false;',
+    'let liveAsrNoticeTimer = null;',
+    'const shownLiveAsrNoticeVideos = new Set();',
+    'function getCurrentVideoId() { return currentVideoId; }',
+    extractBetween('function getLiveAsrUiText()', 'function dieQuietly()'),
+    'globalThis.liveAsrHarness = {',
+    '  confirm: confirmLiveAsrFallback,',
+    '  reset: () => setLiveAsrConfirmed(false),',
+    '  update: updateLiveAsrIndicator,',
+    '  setVideo: (videoId) => { currentVideoId = videoId; },',
+    '  state: () => ({ confirmed: liveAsrConfirmed, open: liveAsrNoticeOpen, shown: shownLiveAsrNoticeVideos.size })',
+    '};'
+  ].join('\n'), context);
+  return {
+    ...context.liveAsrHarness,
+    context,
+    indicatorAttributes,
+    wrapperAttributes,
+    label,
+    tooltip,
+    timers
+  };
+}
+
 test('sentence segmentation keeps abbreviations and decimal numbers intact', () => {
   const { splitCompletedCaptionSentences } = loadCaptionAlgorithms();
   const result = splitCompletedCaptionSentences(
@@ -164,6 +235,52 @@ test('rolling ASR delta removes repeated prefixes and word overlap', () => {
   assert.equal(getRollingAsrDelta('\u4f60\u597d\u4e16\u754c', '\u4e16\u754c\u518d\u89c1', false), '\u518d\u89c1');
 });
 
+test('live ASR preserves cumulative snapshots so left-aligned text grows to the right', () => {
+  const { context } = loadCaptionAlgorithms();
+  const timers = [];
+  context.setTimeout = (callback, delay) => {
+    const timer = { callback, delay, cleared: false };
+    timers.push(timer);
+    return timer;
+  };
+  context.clearTimeout = (timer) => {
+    if (timer) timer.cleared = true;
+  };
+  context.currentSettings.showTrans = false;
+  context.currentSettings.aiFallback = true;
+  context.commits = [];
+  vm.runInContext([
+    'const LIVE_ASR_PREFETCH_MS = 120;',
+    'const LIVE_ASR_COMMIT_STABILITY_MS = 260;',
+    'let liveAsrPrefetchTimer = null;',
+    'let liveAsrCommitTimer = null;',
+    'let liveAsrClearTimer = null;',
+    "let liveAsrPendingText = '';",
+    "let liveAsrCommittedText = '';",
+    'let liveAsrRenderSequence = 0;',
+    'let trackLoadGeneration = 1;',
+    'function ensureCueTranslation() { return Promise.resolve(""); }',
+    'function translateLiveAsrSentence(text) { globalThis.commits.push(text); }',
+    extractBetween('function commitLiveAsrSentence', 'function scheduleLiveAsrClear'),
+    'globalThis.liveHarness = { feed: feedLiveAsrSnapshot };'
+  ].join('\n'), context);
+
+  const runLatestStableTimer = () => {
+    const timer = [...timers].reverse().find((entry) => entry.delay === 260 && !entry.cleared);
+    assert.ok(timer);
+    timer.cleared = true;
+    timer.callback();
+  };
+
+  context.liveHarness.feed('one');
+  context.liveHarness.feed('one two');
+  runLatestStableTimer();
+  context.liveHarness.feed('one two three');
+  runLatestStableTimer();
+
+  assert.deepEqual(Array.from(context.commits), ['one two', 'one two three']);
+});
+
 test('RTL source languages are identified explicitly', () => {
   const { isRtlLanguage } = loadCaptionAlgorithms();
   for (const language of ['ar', 'fa-IR', 'he', 'iw', 'ur']) {
@@ -196,6 +313,133 @@ test('wrapper scaling grows monotonically between its boundaries', () => {
     assert.ok(scales[index] >= scales[index - 1]);
   }
   assert.ok(scales.every((scale) => scale >= 0.75 && scale <= 1.4));
+});
+
+test('rolling ASR lane stays near the picture center and widens on small players', () => {
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext([
+    "const TRACK_MODE = { LIVE_ASR: 'LIVE_ASR', FILE_READY: 'FILE_READY', FILE_WARMING: 'FILE_WARMING' };",
+    "let trackMode = 'FILE_WARMING';",
+    'let isAutoGenerated = false;',
+    extractBetween('function usesRollingAsrFlow', 'function updateWrapperDimensions'),
+    'globalThis.rollingLayout = {',
+    '  lane: getRollingCaptionLane,',
+    '  usesRolling: usesRollingAsrFlow,',
+    '  setState: (mode, autoGenerated) => { trackMode = mode; isAutoGenerated = autoGenerated; }',
+    '};'
+  ].join('\n'), context);
+
+  assert.deepEqual({ ...context.rollingLayout.lane(1200) }, { start: '25%', end: '4%' });
+  assert.deepEqual({ ...context.rollingLayout.lane(700) }, { start: '18%', end: '4%' });
+  assert.deepEqual({ ...context.rollingLayout.lane(500) }, { start: '12%', end: '3%' });
+
+  assert.equal(context.rollingLayout.usesRolling(), false);
+  context.rollingLayout.setState('LIVE_ASR', false);
+  assert.equal(context.rollingLayout.usesRolling(), true);
+  context.rollingLayout.setState('FILE_WARMING', true);
+  assert.equal(context.rollingLayout.usesRolling(), true);
+  context.rollingLayout.setState('FILE_READY', true);
+  assert.equal(context.rollingLayout.usesRolling(), false);
+});
+
+test('rolling ASR alignment is isolated from stable file subtitles', () => {
+  assert.match(
+    contentSource,
+    /setAttribute\('data-caption-flow', usesRollingAsrFlow\(\) \? 'rolling' : 'stable'\)/
+  );
+  assert.match(
+    styleSource,
+    /\[data-caption-flow="rolling"\][\s\S]*width: auto[\s\S]*max-width: none[\s\S]*align-self: stretch/
+  );
+  assert.match(
+    styleSource,
+    /\[data-caption-flow="rolling"\]\[dir="ltr"\][\s\S]*--rolling-caption-start, 25%[\s\S]*--rolling-caption-end, 4%[\s\S]*text-align: left/
+  );
+  assert.match(
+    styleSource,
+    /\[data-caption-flow="rolling"\]\[dir="rtl"\][\s\S]*text-align: right/
+  );
+  assert.doesNotMatch(
+    styleSource.slice(0, styleSource.indexOf('[data-caption-flow="rolling"]')),
+    /text-align: left !important/
+  );
+});
+
+test('confirmed live ASR fallback opens one explanation per video and keeps its status', () => {
+  const harness = loadLiveAsrIndicatorHarness();
+  harness.confirm();
+
+  assert.deepEqual({ ...harness.state() }, { confirmed: true, open: true, shown: 1 });
+  assert.equal(harness.wrapperAttributes.get('data-live-asr-confirmed'), 'true');
+  assert.equal(harness.wrapperAttributes.get('data-live-asr-notice-open'), 'true');
+  assert.equal(harness.indicatorAttributes.get('tabindex'), '0');
+  assert.equal(harness.indicatorAttributes.get('aria-hidden'), 'false');
+  assert.equal(harness.label.textContent, '实时识别');
+  assert.equal(harness.timers[0].delay, 5000);
+
+  harness.timers[0].callback();
+  assert.deepEqual({ ...harness.state() }, { confirmed: true, open: false, shown: 1 });
+  assert.equal(harness.wrapperAttributes.get('data-live-asr-confirmed'), 'true');
+
+  harness.reset();
+  harness.confirm();
+  assert.deepEqual({ ...harness.state() }, { confirmed: true, open: false, shown: 1 });
+  assert.equal(harness.timers.length, 1);
+
+  harness.reset();
+  harness.setVideo('video-b');
+  harness.confirm();
+  assert.deepEqual({ ...harness.state() }, { confirmed: true, open: true, shown: 2 });
+  assert.equal(harness.timers.length, 2);
+});
+
+test('live ASR indicator updates its UI language and hides from keyboard when reset', () => {
+  const harness = loadLiveAsrIndicatorHarness();
+  harness.confirm();
+  harness.context.currentSettings.uiLang = 'es-MX';
+  harness.update();
+  assert.equal(harness.label.textContent, 'Transcripción en vivo');
+  assert.equal(harness.tooltip.textContent, 'Aviso en español');
+
+  harness.reset();
+  assert.equal(harness.wrapperAttributes.get('data-live-asr-confirmed'), 'false');
+  assert.equal(harness.wrapperAttributes.get('data-live-asr-notice-open'), 'false');
+  assert.equal(harness.indicatorAttributes.get('tabindex'), '-1');
+  assert.equal(harness.indicatorAttributes.get('aria-hidden'), 'true');
+});
+
+test('live ASR warning is confirmed only after terminal retry exhaustion', () => {
+  const retryBody = extractBetween('function scheduleTrackRetry', 'async function downloadCaptionJson3');
+  assert.match(
+    retryBody,
+    /if \(attempt >= TRACK_RETRY_DELAYS_MS\.length\)[\s\S]*terminalMode === TRACK_MODE\.LIVE_ASR\)[\s\S]*confirmLiveAsrFallback\(\)/
+  );
+  assert.match(retryBody, /trackRetryTimer = setTimeout\(\(\) => preloadFullTrack\(generation, attempt \+ 1\), delay\)/);
+  assert.doesNotMatch(
+    contentSource.slice(contentSource.indexOf('} catch (error) {'), contentSource.indexOf('setTimeout(() => {', contentSource.indexOf('} catch (error) {'))),
+    /confirmLiveAsrFallback\(\)/
+  );
+  assert.match(contentSource, /trackMode = TRACK_MODE\.FILE_READY;\s*setLiveAsrConfirmed\(false\)/);
+  assert.match(extractBetween('function beginTrackLoad', 'function showYouTubeAutoTranslateWarning'), /setLiveAsrConfirmed\(false\)/);
+  assert.match(contentSource, /snapshot\?\.isAutoTranslated\)[\s\S]{0,100}setLiveAsrConfirmed\(false\)/);
+});
+
+test('live ASR status is accessible, independent, and hidden until confirmed', () => {
+  const containerBody = extractBetween('function ensureSubtitleContainer()', 'function executeLayoutRefresh()');
+  assert.match(containerBody, /lasdoscas-live-asr-indicator" role="status" tabindex="-1"/);
+  assert.match(containerBody, /aria-describedby="lasdoscas-live-asr-tooltip"/);
+  assert.match(containerBody, /lasdoscas-live-asr-tooltip" role="tooltip"/);
+  assert.match(styleSource, /\.lasdoscas-live-asr-indicator \{[\s\S]*display: none !important/);
+  assert.match(styleSource, /data-live-asr-confirmed="true"\][\s\S]*display: inline-flex !important/);
+  assert.match(styleSource, /\.lasdoscas-live-asr-indicator:focus-visible[\s\S]*box-shadow/);
+  assert.match(styleSource, /data-live-asr-notice-open="true"\][\s\S]*opacity: 1 !important/);
+  assert.match(styleSource, /bottom: calc\(100% \+ 6px\) !important/);
+  assert.doesNotMatch(containerBody, /lasdoscas-ai-indicator[\s\S]*lasdoscas-live-asr-label[\s\S]*lasdoscas-ai-tooltip/);
+
+  const visibilityBody = extractBetween('function updateWrapperVisibility()', 'function ensureSubtitleContainer()');
+  assert.match(visibilityBody, /const isEmpty = !lastText && !lastMatchedSource && !liveAsrConfirmed/);
+  assert.match(visibilityBody, /!currentSettings\.showTrans &&\s*!liveAsrConfirmed/);
 });
 
 test('manual subtitle downloads use the same bounded fetch path with AI disabled', () => {
@@ -331,17 +575,86 @@ test('AI batches use compact ids and accept validated partial JSON results', () 
   assert.equal(translations.has(1), false);
 });
 
-test('standard-seeded authored cues still enter AI enhancement', () => {
+test('authored JSON3 starts its initial AI batch before standard translation warmup', () => {
+  const loadBody = extractBetween(
+    'async function preloadFullTrack',
+    'setTimeout(() => {'
+  );
+  const cacheLoadIndex = loadBody.indexOf('await loadSubtitleTranslationCache()');
+  const generationGuardIndex = loadBody.indexOf(
+    'if (generation !== trackLoadGeneration) return;',
+    cacheLoadIndex
+  );
+  const aiWarmupIndex = loadBody.indexOf(
+    'void startInitialAuthoredFileAiWarmup(generation)',
+    generationGuardIndex
+  );
+  const standardWarmupIndex = loadBody.indexOf(
+    'await waitForTranslationWarmup(youtubeTranslationPromise)',
+    aiWarmupIndex
+  );
+  const rendererIndex = loadBody.indexOf('startFileRenderer()', standardWarmupIndex);
+
+  assert.ok(cacheLoadIndex >= 0);
+  assert.ok(generationGuardIndex > cacheLoadIndex);
+  assert.ok(aiWarmupIndex > generationGuardIndex);
+  assert.ok(standardWarmupIndex > aiWarmupIndex);
+  assert.ok(rendererIndex > standardWarmupIndex);
+  assert.equal(
+    (loadBody.match(/startInitialAuthoredFileAiWarmup\(generation\)/g) || []).length,
+    1
+  );
+});
+
+test('initial authored AI warmup is bounded, generation-safe, and reuses playback priority', () => {
+  const context = { calls: [] };
+  vm.createContext(context);
+  vm.runInContext([
+    'const AI_TRANSLATION_BATCH_CUE_LIMIT = 3;',
+    'let isAutoGenerated = false;',
+    'let trackLoadGeneration = 7;',
+    'const currentSettings = { enabled: true, aiEnabled: true, showTrans: true };',
+    "const preloadedSentencesList = ['a', 'b', 'c', 'd', 'e'].map((text) => ({ text }));",
+    'function getPlayerVideoElement() { return { currentTime: 12 }; }',
+    'function findNextCueIndexAtTime(playhead) { globalThis.playhead = playhead; return 2; }',
+    'function startAiBatchEnhancement(texts, generation) {',
+    '  const result = { texts: [...texts], generation };',
+    '  globalThis.calls.push(result);',
+    '  return result;',
+    '}',
+    extractBetween(
+      'function getPriorityFileTranslationTexts',
+      'async function preloadTranslations'
+    ),
+    'globalThis.warm = startInitialAuthoredFileAiWarmup;',
+    'globalThis.setAutoGenerated = (value) => { isAutoGenerated = value; };'
+  ].join('\n'), context);
+
+  const result = context.warm(7);
+  assert.equal(context.playhead, 12);
+  assert.deepEqual(Array.from(result.texts), ['c', 'd', 'e']);
+  assert.equal(result.generation, 7);
+  assert.equal(context.calls.length, 1);
+
+  assert.equal(context.warm(6), null);
+  context.setAutoGenerated(true);
+  assert.equal(context.warm(7), null);
+  assert.equal(context.calls.length, 1);
+});
+
+test('standard-seeded authored cues still enter early AI enhancement without a second preload request', () => {
+  const warmupBody = extractBetween(
+    'function startInitialAuthoredFileAiWarmup',
+    'async function preloadTranslations'
+  );
   const preloadBody = extractBetween(
     'async function preloadTranslations',
     'async function preloadFullTrack'
   );
-  assert.match(preloadBody, /startAiBatchEnhancement\(initialCues, generation\)/);
+  assert.match(warmupBody, /startAiBatchEnhancement\(initialCues, generation\)/);
+  assert.doesNotMatch(warmupBody, /preloadedTranslations\.has/);
+  assert.doesNotMatch(preloadBody, /startAiBatchEnhancement\(/);
   assert.match(preloadBody, /const missingStandardTranslations = initialCues\.filter/);
-  assert.ok(
-    preloadBody.indexOf('startAiBatchEnhancement(initialCues, generation)') <
-    preloadBody.indexOf('const missingStandardTranslations')
-  );
 });
 
 test('queued AI work stays standby until a provider request starts', () => {

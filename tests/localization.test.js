@@ -70,6 +70,8 @@ test('localization catalog exposes immutable top-level dictionaries', () => {
   assert.equal(Object.isFrozen(messages.loadingMessageDict), true);
   assert.equal(Object.isFrozen(messages.hintMessageDict), true);
   assert.equal(Object.isFrozen(messages.autoTranslateSelectionMessageDict), true);
+  assert.equal(Object.isFrozen(messages.liveAsrUiText), true);
+  assert.equal(Object.isFrozen(messages.liveAsrUiText.en), true);
 });
 
 test('flat localization dictionaries contain valid messages and English fallbacks', () => {
@@ -109,6 +111,18 @@ test('copy UI locales contain every required label', () => {
       assert.notEqual(labels[key].trim(), '', `${locale}.${key} must not be empty`);
     }
   }
+});
+
+test('live ASR UI text covers supported UI locales with an English fallback', () => {
+  const { liveAsrUiText } = loadMessages();
+  assert.deepEqual(Object.keys(liveAsrUiText).sort(), ['en', 'es', 'zh']);
+  for (const [locale, text] of Object.entries(liveAsrUiText)) {
+    assert.equal(Object.isFrozen(text), true, locale);
+    assert.deepEqual(Object.keys(text).sort(), ['label', 'notice'], locale);
+    assert.notEqual(text.label.trim(), '', `${locale}.label`);
+    assert.notEqual(text.notice.trim(), '', `${locale}.notice`);
+  }
+  assert.equal(liveAsrUiText.en.label, 'Live transcription');
 });
 
 test('localization catalog loads before the isolated content script', () => {

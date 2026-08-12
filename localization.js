@@ -264,6 +264,21 @@
     }
   });
 
+  const liveAsrUiText = Object.freeze({
+    zh: Object.freeze({
+      label: '实时识别',
+      notice: '当前字幕来自实时语音识别。原文和译文可能随新增语境调整，仅供参考。'
+    }),
+    en: Object.freeze({
+      label: 'Live transcription',
+      notice: 'Source text and translation may be revised as more context becomes available.'
+    }),
+    es: Object.freeze({
+      label: 'Transcripción en vivo',
+      notice: 'El texto original y la traducción pueden cambiar a medida que haya más contexto.'
+    })
+  });
+
   function resolveLocalizedMessage(dictionary, language = 'en') {
     const exactLanguage = String(language || 'en');
     const normalizedLanguage = exactLanguage.toLowerCase();
@@ -281,6 +296,7 @@
     hintMessageDict,
     autoTranslateSelectionMessageDict,
     copyUiText,
+    liveAsrUiText,
     resolveLocalizedMessage
   });
 })();
