@@ -231,9 +231,12 @@ const LIVE_ASR_NOTICE_DURATION_MS = 5000;
 const ASR_STRUCTURAL_GAP_SECONDS = 1.6;
 const ASR_EMERGENCY_MAX_DURATION_SECONDS = 30;
 const ASR_EMERGENCY_MAX_CHARS = 320;
-const ASR_EMERGENCY_MAX_COMPACT_CHARS = 180;
-const DISPLAY_MAX_CHARS = 180;
-const DISPLAY_MAX_COMPACT_CHARS = 60;
+const ASR_EMERGENCY_MAX_COMPACT_CHARS = 128;
+// Keep each timed display part near two readable subtitle lines. Downloaded
+// ASR cues may remain longer for stability, but the renderer advances through
+// smaller parts instead of painting the whole merged cue at once.
+const DISPLAY_MAX_CHARS = 84;
+const DISPLAY_MAX_COMPACT_CHARS = 32;
 const DISPLAY_MAX_PARTS = 4;
 const DISPLAY_MIN_WORDS_PER_PART = 3;
 const DISPLAY_MIN_COMPACT_CHARS_PER_PART = 4;
@@ -1749,15 +1752,19 @@ function splitCompletedCaptionSentences(text, languageCode = currentSourceLang) 
 function getCaptionDisplayPartCount(text, languageCode) {
   const normalized = normalizeCaptionText(text);
   if (!normalized) return 1;
-  const maxChars = isSpaceDelimitedLang(languageCode)
-    ? DISPLAY_MAX_CHARS
-    : DISPLAY_MAX_COMPACT_CHARS;
+  const maxChars = getCaptionDisplayMaxChars(languageCode);
   const { completed, remainder } = splitCompletedCaptionSentences(normalized, languageCode);
   const strongPartCount = completed.length + (remainder ? 1 : 0);
   return Math.min(
     DISPLAY_MAX_PARTS,
     Math.max(1, strongPartCount, Math.ceil(normalized.length / maxChars))
   );
+}
+
+function getCaptionDisplayMaxChars(languageCode) {
+  return isSpaceDelimitedLang(languageCode)
+    ? DISPLAY_MAX_CHARS
+    : DISPLAY_MAX_COMPACT_CHARS;
 }
 
 function getCaptionDisplayPartCapacity(text, languageCode) {
@@ -1806,6 +1813,8 @@ function splitCaptionIntoDisplayParts(text, languageCode, requestedPartCount, bo
   if (!normalized || requestedPartCount <= 1) return [normalized];
 
   const partCount = Math.min(requestedPartCount, DISPLAY_MAX_PARTS, normalized.length);
+  const maxPartLength = getCaptionDisplayMaxChars(languageCode);
+  const canHonorMaxPartLength = normalized.length <= maxPartLength * partCount;
   const candidates = getCaptionDisplayBoundaries(normalized);
   const averagePartLength = normalized.length / partCount;
   const minimumPartLength = Math.max(4, Math.floor(averagePartLength * 0.35));
@@ -1815,9 +1824,17 @@ function splitCaptionIntoDisplayParts(text, languageCode, requestedPartCount, bo
   for (let partIndex = 1; partIndex < partCount; partIndex += 1) {
     const targetRatio = boundaryRatios[partIndex - 1] || partIndex / partCount;
     const targetIndex = Math.round(normalized.length * targetRatio);
-    const maximumBoundary = normalized.length - minimumPartLength * (partCount - partIndex);
+    const remainingParts = partCount - partIndex;
+    const minimumBoundary = Math.max(
+      previousBoundary + minimumPartLength,
+      canHonorMaxPartLength ? normalized.length - maxPartLength * remainingParts : 0
+    );
+    const maximumBoundary = Math.min(
+      normalized.length - minimumPartLength * remainingParts,
+      canHonorMaxPartLength ? previousBoundary + maxPartLength : normalized.length
+    );
     const available = candidates.filter((candidate) =>
-      candidate.index >= previousBoundary + minimumPartLength &&
+      candidate.index >= minimumBoundary &&
       candidate.index <= maximumBoundary &&
       !selectedBoundaries.includes(candidate.index)
     );
@@ -1830,7 +1847,6 @@ function splitCaptionIntoDisplayParts(text, languageCode, requestedPartCount, bo
     })[0];
 
     if (!selected) {
-      const minimumBoundary = previousBoundary + minimumPartLength;
       selected = {
         index: Math.min(maximumBoundary, Math.max(minimumBoundary, targetIndex))
       };

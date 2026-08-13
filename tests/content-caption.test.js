@@ -183,6 +183,40 @@ test('cue duration caps the number of display parts', () => {
   assert.equal(buildBilingualDisplayParts(source, '', 3.2).length, 2);
 });
 
+test('long downloaded cues are divided into readable screen-sized parts', () => {
+  const { buildBilingualDisplayParts } = loadCaptionAlgorithms();
+  const source = Array.from(
+    { length: 36 },
+    (_, index) => `word${String(index).padStart(2, '0')}`
+  ).join(' ');
+  const parts = buildBilingualDisplayParts(source, '', 12);
+
+  assert.equal(parts.length, 3);
+  assert.ok(parts.every((part) => part.source.length <= 84));
+  assert.equal(parts.map((part) => part.source).join(' '), source);
+});
+
+test('uneven sentence boundaries cannot create an oversized display part', () => {
+  const { buildBilingualDisplayParts } = loadCaptionAlgorithms();
+  const source = `Short. Tiny. Brief. ${'extended '.repeat(32).trim()}.`;
+  const parts = buildBilingualDisplayParts(source, '', 12);
+
+  assert.equal(parts.length, 4);
+  assert.ok(parts.every((part) => part.source.length <= 84));
+  assert.equal(parts.map((part) => part.source).join(' '), source);
+});
+
+test('compact-language cues use a shorter per-screen target', () => {
+  const { context, buildBilingualDisplayParts } = loadCaptionAlgorithms();
+  context.currentSourceLang = 'zh-CN';
+  const source = '\u8fd9\u662f\u4e00\u6bb5\u7528\u6765\u9a8c\u8bc1\u81ea\u52a8\u751f\u6210\u5b57\u5e55\u5206\u5c4f\u957f\u5ea6\u7684\u7a33\u5b9a\u6d4b\u8bd5\u6587\u672c'.repeat(3);
+  const parts = buildBilingualDisplayParts(source, '', 12);
+
+  assert.equal(parts.length, 3);
+  assert.ok(parts.every((part) => part.source.length <= 32));
+  assert.equal(parts.map((part) => part.source).join(''), source);
+});
+
 test('late short translation does not change source boundaries', () => {
   const { buildBilingualDisplayParts } = loadCaptionAlgorithms();
   const source = 'One two three four five six. Seven eight nine ten eleven twelve.';
