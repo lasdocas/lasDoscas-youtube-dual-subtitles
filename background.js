@@ -29,6 +29,9 @@ const AI_PROVIDER_CONFIG = {
 };
 const AI_PROVIDER_STORAGE_KEY = 'aiProvider';
 const AI_BATCH_PAYLOAD_PREFIX = 'LASDOSCAS_BATCH_V2\n';
+const AI_SUBTITLE_MIN_BATCH_CUES = 2;
+const AI_SUBTITLE_FORCE_BATCH_CUES = 24;
+const AI_SUBTITLE_MIN_BATCH_TEXT_WEIGHT = 240;
 const OPENAI_COMPATIBLE_TRANSLATION_TIMEOUT_MS = 30000;
 const GEMINI_TRANSLATION_TIMEOUT_MS = 30000;
 // Keep the default traffic below the common free-tier RPM range. A project
@@ -284,6 +287,19 @@ function parseAiBatchPayload(text) {
   }
 }
 
+function getAiBatchTextWeight(items) {
+  return items.reduce((total, item) => total + Array.from(item[1]).reduce(
+    (weight, character) => weight + (character.charCodeAt(0) > 0x7f ? 3 : 1),
+    0
+  ), 0);
+}
+
+function isSubtitleAiBatchLargeEnough(batch, allowShortBatch = false) {
+  return batch.items.length >= AI_SUBTITLE_MIN_BATCH_CUES &&
+    (allowShortBatch || batch.items.length >= AI_SUBTITLE_FORCE_BATCH_CUES ||
+      getAiBatchTextWeight(batch.items) >= AI_SUBTITLE_MIN_BATCH_TEXT_WEIGHT);
+}
+
 function buildTranslationPrompt(text, sourceLang, targetLang) {
   const batch = parseAiBatchPayload(text);
   if (batch) {
@@ -309,8 +325,12 @@ function buildTranslationPrompt(text, sourceLang, targetLang) {
   ].filter(Boolean).join('\n');
 }
 
-function logAiUsage(provider, text, data) {
-  const batchSize = parseAiBatchPayload(text)?.items.length || 1;
+function logAiUsage(provider, text, data, requestContext = {}) {
+  const batch = parseAiBatchPayload(text);
+  const batchSize = batch?.items.length || 1;
+  const sourceChars = batch
+    ? batch.items.reduce((total, item) => total + item[1].length, 0)
+    : text.length;
   const usage = provider === 'gemini'
     ? {
         inputTokens: Number(data?.usageMetadata?.promptTokenCount) || 0,
@@ -324,7 +344,15 @@ function logAiUsage(provider, text, data) {
         totalTokens: Number(data?.usage?.total_tokens) || 0,
         cachedInputTokens: Number(data?.usage?.prompt_tokens_details?.cached_tokens) || 0
       };
-  console.debug('lasDoscas: AI request usage', { provider, batchSize, ...usage });
+  console.debug('lasDoscas: AI request usage', {
+    provider,
+    requestKind: requestContext.requestKind || (batch ? 'batch' : 'direct'),
+    priority: requestContext.priority || '',
+    batchSize,
+    sourceChars,
+    payloadChars: text.length,
+    ...usage
+  });
 }
 
 async function translateWithOpenAICompatible(
@@ -332,7 +360,8 @@ async function translateWithOpenAICompatible(
   text,
   sourceLang,
   targetLang,
-  apiKeyOverride = ''
+  apiKeyOverride = '',
+  requestContext = {}
 ) {
   const config = AI_PROVIDER_CONFIG[provider];
   const apiKey = apiKeyOverride || await getAiApiKey(provider);
@@ -354,7 +383,7 @@ async function translateWithOpenAICompatible(
       model: config.model,
       messages: [{ role: 'user', content: buildTranslationPrompt(text, sourceLang, targetLang) }],
       temperature: 0.2,
-      // A 24-cue batch remains bounded on input. Leave enough output room for
+      // The serialized-size guard keeps roughly 50-cue batches bounded. Leave enough output room for
       // the compact id mapping without allowing unbounded provider responses.
       max_tokens: isBatch ? 4096 : 2048
     };
@@ -368,7 +397,7 @@ async function translateWithOpenAICompatible(
     });
     if (!response.ok) throw createProviderHttpError(provider, response.status);
     const data = await response.json();
-    logAiUsage(provider, text, data);
+    logAiUsage(provider, text, data, requestContext);
     const translation = String(data?.choices?.[0]?.message?.content || '').trim();
     if (!translation) throw new Error(`empty_${provider}_response`);
     return translation;
@@ -383,7 +412,8 @@ async function translateWithGemini(
   targetLang,
   apiKeyOverride = '',
   allowModelFallback = true,
-  priority = 'visible'
+  priority = 'visible',
+  requestContext = {}
 ) {
   const apiKey = apiKeyOverride || await getGeminiApiKey();
   if (!apiKey) throw new Error('missing_key');
@@ -424,7 +454,7 @@ async function translateWithGemini(
         throw createGeminiHttpError(response.status, retryAfterMs);
       }
       const data = await response.json();
-      logAiUsage('gemini', text, data);
+      logAiUsage('gemini', text, data, requestContext);
       const translation = data?.candidates?.[0]?.content?.parts
         ?.map((part) => part.text || '')
         .join('')
@@ -459,7 +489,7 @@ async function translateWithGemini(
   throw lastError || createGeminiHttpError(429);
 }
 
-function getGeminiTranslation(text, sourceLang, targetLang, priority = 'visible') {
+function getGeminiTranslation(text, sourceLang, targetLang, priority = 'visible', requestContext = {}) {
   const isBatch = Boolean(parseAiBatchPayload(text));
   const cacheKey = [
     'gemini',
@@ -475,7 +505,7 @@ function getGeminiTranslation(text, sourceLang, targetLang, priority = 'visible'
   }
   if (geminiInflightTranslations.has(cacheKey)) return geminiInflightTranslations.get(cacheKey);
 
-  const request = translateWithGemini(text, sourceLang, targetLang, '', true, priority)
+  const request = translateWithGemini(text, sourceLang, targetLang, '', true, priority, requestContext)
     .then((translation) => {
       if (!isBatch) cacheTranslation(cacheKey, translation, text.length);
       return { translation, cached: false };
@@ -485,11 +515,18 @@ function getGeminiTranslation(text, sourceLang, targetLang, priority = 'visible'
   return request;
 }
 
-function getAiTranslation(text, sourceLang, targetLang, providerOverride = '', priority = 'visible') {
+function getAiTranslation(
+  text,
+  sourceLang,
+  targetLang,
+  providerOverride = '',
+  priority = 'visible',
+  requestContext = {}
+) {
   return getAiProvider().then((storedProvider) => {
     const provider = String(providerOverride || storedProvider || 'gemini').toLowerCase();
     if (provider === 'gemini') {
-      return getGeminiTranslation(text, sourceLang, targetLang, priority).then((result) => ({
+      return getGeminiTranslation(text, sourceLang, targetLang, priority, requestContext).then((result) => ({
         translation: result.translation,
         source: provider,
         cached: result.cached
@@ -510,7 +547,7 @@ function getAiTranslation(text, sourceLang, targetLang, providerOverride = '', p
         return { translation: cachedTranslation, source: provider, cached: true };
       }
     }
-    return translateWithOpenAICompatible(provider, text, sourceLang, targetLang)
+    return translateWithOpenAICompatible(provider, text, sourceLang, targetLang, '', requestContext)
       .then((translation) => {
         if (!isBatch) cacheTranslation(cacheKey, translation, text.length);
         return { translation, source: provider, cached: false };
@@ -564,13 +601,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
     }
 
+    const batch = parseAiBatchPayload(text);
+    const isVisibleSubtitleRequest = request.requestKind === 'subtitle_visible';
+    const isSubtitleRequest = request.requestKind === 'subtitle' ||
+      isVisibleSubtitleRequest || Boolean(sender?.tab);
+    if (isSubtitleRequest && !batch) {
+      sendResponse({ translation: '', source: '', error: 'ai_batch_required' });
+      return false;
+    }
+    if (isSubtitleRequest && !isSubtitleAiBatchLargeEnough(batch, isVisibleSubtitleRequest)) {
+      sendResponse({ translation: '', source: '', error: 'ai_batch_too_small' });
+      return false;
+    }
+
     const provider = String(request.provider || '').toLowerCase();
+    const priority = request.priority === 'prefetch' ? 'prefetch' : 'visible';
     getAiTranslation(
       text,
       request.sourceLang,
       request.lang || 'zh-CN',
       provider,
-      request.priority === 'prefetch' ? 'prefetch' : 'visible'
+      priority,
+      { requestKind: request.requestKind || (isSubtitleRequest ? 'subtitle' : 'unknown'), priority }
     )
       .then((result) => sendResponse(result))
       .catch((error) => {
@@ -698,9 +750,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // A valid key can have no quota on the preferred model while another
     // configured Gemini model remains usable. Test the same fallback chain as
     // real subtitle requests so the result reflects actual availability.
+    const testContext = { requestKind: 'key-test', priority: 'visible' };
     const testRequest = provider === 'gemini'
-      ? translateWithGemini('Hello', 'en', 'es', apiKey, true)
-      : translateWithOpenAICompatible(provider, 'Hello', 'en', 'es', apiKey);
+      ? translateWithGemini('Hello', 'en', 'es', apiKey, true, 'visible', testContext)
+      : translateWithOpenAICompatible(provider, 'Hello', 'en', 'es', apiKey, testContext);
     testRequest.then(() => {
       sendResponse({ ok: true });
     }).catch((error) => {

@@ -6,8 +6,68 @@
 
   let lastVideoId = '';
   let lastActiveTrack = null;
+  let performanceCaptionRecoveryComplete = false;
+  let observedCaptionRequestVideoId = '';
+  let observedTranslationLanguageCode = '';
   let cachedMoviePlayer = null;
   let cachedSubtitleButton = null;
+
+  function observeNativeCaptionRequest(input) {
+    const rawUrl = typeof input === 'string' ? input : input?.url;
+    if (!rawUrl) return false;
+
+    let url;
+    try {
+      url = new URL(rawUrl, window.location.href);
+    } catch (error) {
+      return false;
+    }
+    if (!/\/api\/timedtext\/?$/i.test(url.pathname)) return false;
+
+    const videoId = url.searchParams.get('v') || '';
+    const pageVideoId = new URL(window.location.href).searchParams.get('v') || '';
+    if (videoId && pageVideoId && videoId !== pageVideoId) return false;
+
+    observedCaptionRequestVideoId = videoId || pageVideoId;
+    observedTranslationLanguageCode = url.searchParams.get('tlang') || '';
+    return true;
+  }
+
+  function syncObservedCaptionRequestFromPerformance() {
+    if (performanceCaptionRecoveryComplete) return;
+    performanceCaptionRecoveryComplete = true;
+    let entries = [];
+    try {
+      entries = window.performance?.getEntriesByType?.('resource') || [];
+    } catch (error) {
+      return;
+    }
+
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      if (observeNativeCaptionRequest(entries[index]?.name)) return;
+    }
+  }
+
+  function installNativeCaptionRequestObserver() {
+    if (typeof window.fetch === 'function') {
+      const nativeFetch = window.fetch;
+      window.fetch = function (...args) {
+        observeNativeCaptionRequest(args[0]);
+        return nativeFetch.apply(this, args);
+      };
+    }
+
+    const xhrPrototype = window.XMLHttpRequest?.prototype;
+    if (xhrPrototype && typeof xhrPrototype.open === 'function') {
+      const nativeOpen = xhrPrototype.open;
+      xhrPrototype.open = function (method, url, ...rest) {
+        observeNativeCaptionRequest(url);
+        return nativeOpen.call(this, method, url, ...rest);
+      };
+    }
+  }
+
+  installNativeCaptionRequestObserver();
 
   function getMoviePlayerElement() {
     if (!cachedMoviePlayer?.isConnected) {
@@ -24,7 +84,15 @@
   }
 
   function safeVssId(track) {
-    return track?.vssId || track?.vss_id || '';
+    return track?.vssId || track?.vss_id || track?.captionTrackId || track?.id || '';
+  }
+
+  function getTrackLanguageCode(track) {
+    return getLanguageCode(track?.language) ||
+      track?.languageCode ||
+      track?.language_code ||
+      track?.lang ||
+      '';
   }
 
   function normalizeTrack(track) {
@@ -32,7 +100,7 @@
     return {
       baseUrl: track.baseUrl || '',
       kind: track.kind || '',
-      languageCode: track.languageCode || '',
+      languageCode: getTrackLanguageCode(track),
       name: track.name?.simpleText || track.name || '',
       vssId: safeVssId(track)
     };
@@ -40,14 +108,19 @@
 
   function getLanguageCode(value) {
     if (typeof value === 'string') return value;
-    return value?.languageCode || value?.language_code || '';
+    return value?.languageCode ||
+      value?.language_code ||
+      value?.id ||
+      value?.code ||
+      value?.value ||
+      '';
   }
 
   function hasTrackIdentity(track) {
     return Boolean(
       track && (
         safeVssId(track) ||
-        track.languageCode ||
+        getTrackLanguageCode(track) ||
         track.baseUrl ||
         getLanguageCode(track.translationLanguage) ||
         getLanguageCode(track.translation_language) ||
@@ -56,19 +129,35 @@
     );
   }
 
-  function getAutoTranslationState(activeTrack, selectedTrack) {
-    if (!activeTrack) return { isAutoTranslated: false, languageCode: '' };
+  function getAutoTranslationState(
+    activeTrack,
+    selectedTrack,
+    captionTracks = [],
+    translationLanguage = null,
+    captionRequestState = null
+  ) {
+    const optionLanguageCode = getLanguageCode(translationLanguage);
+    const requestObserved = captionRequestState?.observed === true;
+    const requestLanguageCode = requestObserved
+      ? getLanguageCode(captionRequestState.languageCode)
+      : '';
+    if (!activeTrack && !optionLanguageCode && !requestLanguageCode) {
+      return { isAutoTranslated: false, languageCode: '' };
+    }
 
-    let languageCode =
-      getLanguageCode(activeTrack.translationLanguage) ||
-      getLanguageCode(activeTrack.translation_language) ||
-      getLanguageCode(activeTrack.translatedLanguage) ||
-      activeTrack.translationLanguageCode ||
-      activeTrack.translatedLanguageCode ||
-      activeTrack.tlang ||
+    const embeddedLanguageCode =
+      getLanguageCode(activeTrack?.translationLanguage) ||
+      getLanguageCode(activeTrack?.translation_language) ||
+      getLanguageCode(activeTrack?.translatedLanguage) ||
+      activeTrack?.translationLanguageCode ||
+      activeTrack?.translatedLanguageCode ||
+      activeTrack?.tlang ||
       '';
+    let languageCode = requestObserved
+      ? requestLanguageCode
+      : optionLanguageCode || embeddedLanguageCode;
 
-    if (!languageCode && activeTrack.baseUrl) {
+    if (!languageCode && activeTrack?.baseUrl) {
       try {
         languageCode = new URL(activeTrack.baseUrl).searchParams.get('tlang') || '';
       } catch (error) {
@@ -78,18 +167,45 @@
 
     const activeVssId = safeVssId(activeTrack);
     const selectedVssId = safeVssId(selectedTrack);
+    const activeLanguageCode = getTrackLanguageCode(activeTrack);
+    const selectedLanguageCode = getTrackLanguageCode(selectedTrack);
+    const sourceLanguageCode =
+      activeTrack?.sourceLanguageCode ||
+      activeTrack?.source_language_code ||
+      activeTrack?.originalLanguageCode ||
+      activeTrack?.original_language_code ||
+      getTrackLanguageCode(activeTrack?.sourceTrack) ||
+      getTrackLanguageCode(activeTrack?.captionTrack) ||
+      '';
     const languageChangedOnSameTrack = Boolean(
       selectedTrack &&
       activeVssId &&
       activeVssId === selectedVssId &&
-      activeTrack.languageCode &&
-      selectedTrack.languageCode &&
-      activeTrack.languageCode !== selectedTrack.languageCode
+      activeLanguageCode &&
+      selectedLanguageCode &&
+      activeLanguageCode !== selectedLanguageCode
+    );
+    const languageChangedFromSource = Boolean(
+      sourceLanguageCode &&
+      activeLanguageCode &&
+      sourceLanguageCode !== activeLanguageCode
+    );
+    const availableLanguages = new Set(
+      captionTracks.map((track) => getTrackLanguageCode(track)).filter(Boolean)
+    );
+    const activeLanguageIsUnavailable = Boolean(
+      captionTracks.length &&
+      activeLanguageCode &&
+      !availableLanguages.has(activeLanguageCode)
     );
     const explicitlyTranslated =
-      activeTrack.isTranslated === true ||
-      activeTrack.is_translated === true ||
-      activeTrack.kind === 'translate';
+      Boolean(requestLanguageCode) ||
+      (!requestObserved && Boolean(optionLanguageCode || embeddedLanguageCode)) ||
+      activeTrack?.isTranslated === true ||
+      activeTrack?.is_translated === true ||
+      activeTrack?.isAutoTranslated === true ||
+      activeTrack?.is_auto_translated === true ||
+      activeTrack?.kind === 'translate';
 
     // YouTube can leave translationLanguage/tlang on the player option for a
     // moment after switching back to an authored track. If the active and
@@ -101,23 +217,32 @@
       !safeVssId(selectedTrack).startsWith('a.')
     );
     const staleTranslationMetadata = Boolean(
+      requestObserved &&
+      !requestLanguageCode &&
       selectedTrack &&
-      activeTrack.languageCode &&
-      selectedTrack.languageCode &&
-      activeTrack.languageCode === selectedTrack.languageCode &&
+      activeLanguageCode &&
+      selectedLanguageCode &&
+      activeLanguageCode === selectedLanguageCode &&
       selectedTrackIsManual &&
       !explicitlyTranslated &&
-      !languageChangedOnSameTrack
+      !languageChangedOnSameTrack &&
+      !languageChangedFromSource &&
+      !activeLanguageIsUnavailable
     );
 
     if (!languageCode && languageChangedOnSameTrack) {
-      languageCode = activeTrack.languageCode;
+      languageCode = activeLanguageCode;
+    }
+    if (!languageCode && (languageChangedFromSource || activeLanguageIsUnavailable)) {
+      languageCode = activeLanguageCode;
     }
 
     return {
       isAutoTranslated: Boolean(
         explicitlyTranslated ||
         languageChangedOnSameTrack ||
+        languageChangedFromSource ||
+        activeLanguageIsUnavailable ||
         (languageCode && !staleTranslationMetadata)
       ),
       languageCode
@@ -128,7 +253,7 @@
     if (!captionTracks.length) return null;
 
     const activeVssId = safeVssId(activeTrack);
-    const activeLanguage = activeTrack?.languageCode || '';
+    const activeLanguage = getTrackLanguageCode(activeTrack);
     const activeKind = activeTrack?.kind || '';
 
     if (activeVssId) {
@@ -138,11 +263,11 @@
 
     if (activeLanguage) {
       const sameLanguageAndKind = captionTracks.find((track) =>
-        track.languageCode === activeLanguage && (!activeKind || track.kind === activeKind)
+        getTrackLanguageCode(track) === activeLanguage && (!activeKind || track.kind === activeKind)
       );
       if (sameLanguageAndKind) return sameLanguageAndKind;
 
-      const sameLanguage = captionTracks.find((track) => track.languageCode === activeLanguage);
+      const sameLanguage = captionTracks.find((track) => getTrackLanguageCode(track) === activeLanguage);
       if (sameLanguage) return sameLanguage;
     }
 
@@ -154,6 +279,7 @@
   }
 
   function getSnapshot(pageUrl = new URL(window.location.href)) {
+    syncObservedCaptionRequestFromPerformance();
     const moviePlayer = getMoviePlayerElement();
     const pageVideoId = pageUrl.searchParams.get('v') || '';
     let playerResponse = null;
@@ -196,15 +322,27 @@
     if (videoId !== lastVideoId) {
       lastVideoId = videoId;
       lastActiveTrack = null;
+      if (observedCaptionRequestVideoId !== videoId) {
+        observedCaptionRequestVideoId = '';
+        observedTranslationLanguageCode = '';
+      }
     }
 
     let activeTrack = null;
+    let translationLanguage = null;
     try {
       if (moviePlayer && typeof moviePlayer.getOption === 'function') {
         activeTrack = moviePlayer.getOption('captions', 'track');
       }
     } catch (error) {
       activeTrack = null;
+    }
+    try {
+      if (moviePlayer && typeof moviePlayer.getOption === 'function') {
+        translationLanguage = moviePlayer.getOption('captions', 'translationLanguage');
+      }
+    } catch (error) {
+      translationLanguage = null;
     }
 
     // YouTube clears the active caption track when its native CC button is
@@ -220,7 +358,21 @@
       selectTrack(captionTracks, effectiveActiveTrack) ||
       (hasTrackIdentity(lastActiveTrack) ? lastActiveTrack : null);
     const normalizedTrack = normalizeTrack(selectedTrack);
-    const autoTranslation = getAutoTranslationState(effectiveActiveTrack, selectedTrack);
+    const autoTranslation = getAutoTranslationState(
+      effectiveActiveTrack,
+      selectedTrack,
+      captionTracks,
+      translationLanguage,
+      {
+        observed: observedCaptionRequestVideoId === videoId,
+        languageCode: observedCaptionRequestVideoId === videoId
+          ? observedTranslationLanguageCode
+          : ''
+      }
+    );
+    const autoTranslationKey = autoTranslation.isAutoTranslated
+      ? `auto-translate:${autoTranslation.languageCode || 'on'}`
+      : 'source';
     const trackKey = normalizedTrack
       ? [
           videoId,
@@ -228,9 +380,9 @@
           normalizedTrack.kind,
           normalizedTrack.vssId,
           captionsEnabled ? 'captions:on' : 'captions:off',
-          autoTranslation.isAutoTranslated ? `auto-translate:${autoTranslation.languageCode || 'on'}` : 'source'
+          autoTranslationKey
         ].join('|')
-      : `${videoId}|none`;
+      : `${videoId}|none|${captionsEnabled ? 'captions:on' : 'captions:off'}|${autoTranslationKey}`;
 
     return {
       videoId,

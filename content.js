@@ -19,11 +19,11 @@ const {
 
 function getLoadingMessage() {
   const dictionary = currentSettings.aiEnabled ? aiLoadingMessageDict : loadingMessageDict;
-  return resolveLocalizedMessage(dictionary, currentSettings.lang);
+  return resolveLocalizedMessage(dictionary, currentSettings.uiLang);
 }
 
 function getYouTubeCaptionsDisabledMessage() {
-  return resolveLocalizedMessage(youtubeCaptionsDisabledMessageDict, currentSettings.lang);
+  return resolveLocalizedMessage(youtubeCaptionsDisabledMessageDict, currentSettings.uiLang);
 }
 
 function isSpaceDelimitedLang(langCode) {
@@ -41,8 +41,8 @@ function getHintMessage(targetLang) {
   return resolveLocalizedMessage(hintMessageDict, targetLang);
 }
 
-function getAutoTranslateSelectionMessage(targetLang) {
-  return resolveLocalizedMessage(autoTranslateSelectionMessageDict, targetLang);
+function getAutoTranslateSelectionMessage() {
+  return resolveLocalizedMessage(autoTranslateSelectionMessageDict, currentSettings.uiLang);
 }
 
 function getLiveAsrUiText() {
@@ -97,6 +97,8 @@ function dieQuietly() {
   if (isOrphaned) return;
   isOrphaned = true; 
   resetPlayerElementCache();
+  document.body?.removeAttribute('data-yt-dual-sub-active');
+  document.querySelector('.custom-subtitle-wrapper')?.remove();
   
   if (observer) observer.disconnect();
   if (flexyObserver) flexyObserver.disconnect();
@@ -205,19 +207,22 @@ const FILE_CUE_TRANSLATION_GRACE_MS = 240;
 const YOUTUBE_TRANSLATION_WARMUP_MS = 300;
 const INITIAL_TRANSLATION_LOOKAHEAD = 6;
 const AUTO_TRANSLATION_LOOKAHEAD_SECONDS = 60;
-const AUTO_TRANSLATION_WINDOW_MAX_CUES = 24;
+const AUTO_TRANSLATION_WINDOW_MAX_CUES = 48;
 const AUTO_TRANSLATION_WINDOW_CONCURRENCY = 4;
 const AUTO_TRANSLATION_WINDOW_REFRESH_SECONDS = 5;
-const AUTO_FILE_WARMUP_TIMEOUT_MS = 1500;
+const AUTO_FILE_WARMUP_TIMEOUT_MS = 800;
 const PRELOAD_BATCH_DELAY_MS = 80;
 const STANDARD_TRANSLATION_BATCH_SIZE = 16;
-// Batch by both cue count and serialized size. Twenty-four nearby cues usually
-// cover 45-90 seconds without making the first useful response too large.
-const AI_TRANSLATION_BATCH_CUE_LIMIT = 24;
+// Keep roughly 50 nearby cues in one request while the serialized-size guard
+// below caps unusually long subtitles.
+const AI_TRANSLATION_BATCH_CUE_LIMIT = 48;
+const AI_TRANSLATION_VISIBLE_BATCH_CUE_LIMIT = 4;
+const AI_TRANSLATION_MIN_BATCH_CUES = 2;
+const AI_TRANSLATION_FORCE_BATCH_CUES = 24;
+const AI_TRANSLATION_MIN_BATCH_TEXT_WEIGHT = 240;
 const AI_TRANSLATION_MAX_CHARS = 4500;
 const AI_TRANSLATION_CONTEXT_CUE_LIMIT = 3;
 const AI_TRANSLATION_LOOKAHEAD_SECONDS = 75;
-const AI_VISIBLE_BATCH_GRACE_MS = 650;
 const AI_BATCH_RETRY_CUE_LIMIT = 8;
 const AI_TRANSLATION_RETRY_COOLDOWN_MS = 30 * 1000;
 const AI_BATCH_PAYLOAD_PREFIX = 'LASDOSCAS_BATCH_V2\n';
@@ -284,7 +289,7 @@ let bridgeRequestSequence = 0;
 const bridgeRequests = new Map();
 const inflightTranslations = new Map();
 const inflightAiTranslations = new Map();
-const visibleAiGraceRequests = new Map();
+const pendingRealtimeAiTranslations = new Map();
 const settledAiTranslations = new Set();
 const failedAiTranslations = new Map();
 const queuedAiTranslations = new Set();
@@ -385,6 +390,9 @@ function getAiDisplayState(sourceText, translationSource = '') {
     );
     return 'enhanced';
   }
+  // A track-level provider request takes precedence over stale per-cue standby
+  // state left by an earlier, undersized scheduling attempt.
+  if (aiIndicatorSessionState === 'processing') return 'processing';
   return aiTranslationStates.get(sourceText) || aiIndicatorSessionState || 'standby';
 }
 function getIdleAiDisplayState(wrapper) {
@@ -534,6 +542,14 @@ try {
         setWrapperAiDisplayState(wrapper, wrapper.getAttribute('data-ai-state') || 'standby');
         updateLiveAsrIndicator(wrapper);
       }
+      if (loadingMessageVisible) {
+        showLoadingMessage();
+      } else if (trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE) {
+        showYouTubeAutoTranslateWarning();
+      } else if (trackMode === TRACK_MODE.WAITING_FOR_YOUTUBE_CAPTIONS) {
+        clearSubtitleContent();
+        applyStylesToDOM();
+      }
     }
 
     if (changes.showTrans && trackMode === TRACK_MODE.FILE_READY) {
@@ -574,7 +590,8 @@ function syncPluginState() {
     initCCButtonObserver();
     const shouldRun = currentSettings.enabled && isCCAvailable && isYouTubeWatchPage();
 
-    document.body.setAttribute('data-yt-dual-sub-active', shouldRun ? 'true' : 'false');
+    if (shouldRun) document.body.setAttribute('data-yt-dual-sub-active', 'true');
+    else document.body.removeAttribute('data-yt-dual-sub-active');
 
     const wrapper = document.querySelector('.custom-subtitle-wrapper');
     if (!shouldRun) {
@@ -1557,7 +1574,10 @@ function clearSubtitleContent() {
   const wrapper = document.querySelector('.custom-subtitle-wrapper');
   if (!wrapper) return;
   
-  lastText = loadingMessageVisible ? getLoadingMessage() : "";
+  const statusMessage = loadingMessageVisible
+    ? getLoadingMessage()
+    : getPersistentTrackStatusMessage();
+  lastText = statusMessage;
   lastMatchedSource = "";
 
   const srcNode = wrapper.querySelector('.custom-source-text');
@@ -1565,8 +1585,9 @@ function clearSubtitleContent() {
   
   if (srcNode) srcNode.innerHTML = "&nbsp;";
   if (transNode) {
-    if (loadingMessageVisible) transNode.innerHTML = getSecondSubtitleStatusHtml(lastText);
-    else transNode.innerHTML = "&nbsp;";
+    transNode.innerHTML = statusMessage
+      ? getSecondSubtitleStatusHtml(statusMessage)
+      : "&nbsp;";
   }
   wrapper.setAttribute('data-translation-source', '');
   const idleAiState = getIdleAiDisplayState(wrapper);
@@ -1638,6 +1659,16 @@ function getNativeCaptionText(containerTarget) {
 
 function getSecondSubtitleStatusHtml(message) {
   return `<span class="lasdoscas-status-message">${message}</span>`;
+}
+
+function getPersistentTrackStatusMessage() {
+  if (trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE) {
+    return getAutoTranslateSelectionMessage();
+  }
+  if (trackMode === TRACK_MODE.WAITING_FOR_YOUTUBE_CAPTIONS) {
+    return getYouTubeCaptionsDisabledMessage();
+  }
+  return '';
 }
 
 function getAutoGeneratedHintHtml() {
@@ -2124,7 +2155,8 @@ function sendTranslationRequest(action, text, lang = currentSettings.lang, optio
         text,
         lang,
         sourceLang: currentSourceLang,
-        priority: options.priority || ''
+        priority: options.priority || '',
+        requestKind: options.requestKind || ''
       }, (response) => {
         if (chrome.runtime.lastError) {
           if (chrome.runtime.lastError.message?.includes('Extension context invalidated')) dieQuietly();
@@ -2144,8 +2176,16 @@ function requestTranslation(text, lang = currentSettings.lang) {
   return sendTranslationRequest('translate', text, lang);
 }
 
-function requestAiTranslation(text, lang = currentSettings.lang, priority = 'visible') {
-  return sendTranslationRequest('translate_ai', text, lang, { priority });
+function requestAiTranslation(
+  text,
+  lang = currentSettings.lang,
+  priority = 'visible',
+  allowShortBatch = false
+) {
+  return sendTranslationRequest('translate_ai', text, lang, {
+    priority,
+    requestKind: allowShortBatch ? 'subtitle_visible' : 'subtitle'
+  });
 }
 
 function renderDomTranslationFallback(currentText) {
@@ -2153,8 +2193,11 @@ function renderDomTranslationFallback(currentText) {
 
   clearTimeout(translateDebounceTimer);
   const cachedTranslation = preloadedTranslations.get(currentText);
+  const allowAiEnhancement = currentSettings.aiEnabled &&
+    trackMode !== TRACK_MODE.DISCOVERING &&
+    trackMode !== TRACK_MODE.FILE_WARMING;
   if (cachedTranslation) {
-    if (currentSettings.aiEnabled) startAiEnhancement(currentText, trackLoadGeneration);
+    if (allowAiEnhancement) startAiEnhancement(currentText, trackLoadGeneration);
     hideLoadingMessage();
     lastText = currentText;
     lastMatchedSource = '';
@@ -2169,7 +2212,7 @@ function renderDomTranslationFallback(currentText) {
 
   lastText = currentText;
   lastMatchedSource = '';
-  const waitingForAi = currentSettings.aiEnabled && currentSettings.showTrans;
+  const waitingForAi = allowAiEnhancement && currentSettings.showTrans;
   if (waitingForAi) {
     hideLoadingMessage();
     updateSubtitleContent(currentText, '', false, '', 'standby');
@@ -2178,8 +2221,10 @@ function renderDomTranslationFallback(currentText) {
   translateDebounceTimer = setTimeout(async () => {
     const generation = trackLoadGeneration;
     const targetLang = currentSettings.lang;
-    if (currentSettings.aiEnabled) startAiEnhancement(currentText, generation);
-    if (currentSettings.aiEnabled && !currentSettings.aiFallback) return;
+    const aiRequest = allowAiEnhancement
+      ? startAiEnhancement(currentText, generation)
+      : null;
+    if (aiRequest && !currentSettings.aiFallback) return;
     const result = await requestTranslation(currentText, targetLang);
     if (!result.text || generation !== trackLoadGeneration || currentText !== lastText) return;
 
@@ -2203,10 +2248,10 @@ function bindMutationObserver(containerTarget) {
     }
     if (!currentSettings.enabled) return;
 
-    // Authored captions can fall back to the native DOM while the downloadable
-    // track is warming. FILE_READY takes over with the timestamped renderer
-    // once the file is available.
     if (trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE) return;
+    // Do not treat the native line as source text until the player snapshot has
+    // established whether it is an original or YouTube auto-translated track.
+    if (trackMode === TRACK_MODE.DISCOVERING || trackMode === TRACK_MODE.FILE_WARMING) return;
 
     if (trackMode === TRACK_MODE.FILE_READY) {
       renderFileCue();
@@ -2348,9 +2393,19 @@ function showYouTubeAutoTranslateWarning() {
   stopFileRenderer();
   resetLiveAsrBuffer();
   hideLoadingMessage();
-  const message = getAutoTranslateSelectionMessage(currentSettings.lang);
+  const message = getAutoTranslateSelectionMessage();
   lastText = message;
   lastMatchedSource = '';
+  const wrapper = ensureSubtitleContainer();
+  if (!wrapper) {
+    setTimeout(() => {
+      if (trackMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE && currentSettings.enabled &&
+          isCCAvailable && isYouTubeWatchPage() && !isOrphaned) {
+        showYouTubeAutoTranslateWarning();
+      }
+    }, 150);
+    return;
+  }
   updateSubtitleContent('\u00A0', getSecondSubtitleStatusHtml(message), true);
   applyStylesToDOM();
 }
@@ -2358,9 +2413,14 @@ function showYouTubeAutoTranslateWarning() {
 function scheduleTrackRetry(generation, attempt, terminalMode, reason) {
   if (generation !== trackLoadGeneration || isOrphaned || !currentSettings.enabled) return;
 
-  if (attempt >= TRACK_RETRY_DELAYS_MS.length) {
-    trackMode = terminalMode;
-    if (terminalMode === TRACK_MODE.LIVE_ASR) confirmLiveAsrFallback();
+    if (attempt >= TRACK_RETRY_DELAYS_MS.length) {
+      trackMode = terminalMode;
+      if (terminalMode === TRACK_MODE.YOUTUBE_AUTO_TRANSLATE) {
+        setLiveAsrConfirmed(false);
+        showYouTubeAutoTranslateWarning();
+        return;
+      }
+      if (terminalMode === TRACK_MODE.LIVE_ASR) confirmLiveAsrFallback();
     else setLiveAsrConfirmed(false);
     console.info(`lasDoscas: 字幕轨道预加载未完成，进入 ${terminalMode} 模式：${reason}`);
     // A failed track load must not leave the permanent loading banner up.
@@ -2771,6 +2831,19 @@ function buildAiBatchPayload(texts, contextTexts = getAiBatchContext(texts)) {
   })}`;
 }
 
+function getAiBatchTextWeight(texts) {
+  return texts.reduce((total, text) => total + Array.from(text).reduce(
+    (weight, character) => weight + (character.charCodeAt(0) > 0x7f ? 3 : 1),
+    0
+  ), 0);
+}
+
+function isAiBatchLargeEnough(texts, allowShortBatch = false) {
+  return texts.length >= AI_TRANSLATION_MIN_BATCH_CUES &&
+    (allowShortBatch || texts.length >= AI_TRANSLATION_FORCE_BATCH_CUES ||
+      getAiBatchTextWeight(texts) >= AI_TRANSLATION_MIN_BATCH_TEXT_WEIGHT);
+}
+
 function parseAiBatchResponse(responseText, texts) {
   const trimmed = String(responseText || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   const objectStart = trimmed.indexOf('{');
@@ -2845,16 +2918,12 @@ function discardPendingAiPrefetch() {
 
 function resetAiTranslationScheduling() {
   discardPendingAiPrefetch();
-  visibleAiGraceRequests.forEach((entry) => {
-    clearTimeout(entry.timer);
-    entry.resolve({ text: '', source: '' });
-  });
-  visibleAiGraceRequests.clear();
   if (pendingVisibleAiJob) pendingVisibleAiJob.resolve({ text: '', source: '' });
   activeAiPrefetchJob = null;
   activeVisibleAiJob = null;
   pendingVisibleAiJob = null;
   queuedAiTranslations.clear();
+  pendingRealtimeAiTranslations.clear();
   failedAiTranslations.clear();
   aiIndicatorSessionState = 'standby';
   aiIndicatorSessionOrigin = '';
@@ -2883,7 +2952,9 @@ function maybeStartNextAiJob() {
     const nextPrefetchJob = pendingAiPrefetchJob;
     pendingAiPrefetchJob = null;
     runAiPrefetchJob(nextPrefetchJob);
+    return;
   }
+  if (!activeVisibleAiJob && !activeAiPrefetchJob) flushRealtimeAiBatch();
 }
 
 function refreshAiIndicatorSessionState() {
@@ -2934,52 +3005,33 @@ function runVisibleAiJob(job) {
   return job.promise;
 }
 
-function waitForAiPrefetchOrPromote(sourceText, generation) {
-  const requestKey = getAiRequestKey(sourceText, generation);
-  if (visibleAiGraceRequests.has(requestKey)) return visibleAiGraceRequests.get(requestKey).promise;
+function flushRealtimeAiBatch(generation = trackLoadGeneration) {
+  if (generation !== trackLoadGeneration || pendingAiPrefetchJob) return null;
+  const texts = Array.from(pendingRealtimeAiTranslations.values())
+    .filter((entry) => entry.generation === generation)
+    .map((entry) => entry.sourceText)
+    .slice(0, AI_TRANSLATION_BATCH_CUE_LIMIT);
+  if (!isAiBatchLargeEnough(texts)) return null;
 
-  let resolveGrace;
-  const entry = {
-    promise: new Promise((resolve) => { resolveGrace = resolve; }),
-    resolve: (result) => resolveGrace(result),
-    timer: null
-  };
-  const finish = (result) => {
-    if (visibleAiGraceRequests.get(requestKey) === entry) visibleAiGraceRequests.delete(requestKey);
-    entry.resolve(result || { text: '', source: '' });
-  };
-  entry.timer = setTimeout(() => {
-    const applied = getAppliedAiResult(sourceText);
-    if (applied || generation !== trackLoadGeneration) {
-      finish(applied);
-      return;
-    }
-
-    const activeBatch = activeAiPrefetchJob?.generation === generation &&
-      activeAiPrefetchJob.texts.includes(sourceText)
-      ? activeAiPrefetchJob
-      : null;
-    if (activeBatch) {
-      activeBatch.promise.then(() => {
-        const activeResult = getAppliedAiResult(sourceText);
-        if (activeResult) finish(activeResult);
-        else Promise.resolve(startAiEnhancement(sourceText, generation, { immediate: true }))
-          .then(finish, () => finish(null));
-      });
-      return;
-    }
-
-    removeFromPendingAiPrefetch(sourceText, generation);
-    Promise.resolve(startAiEnhancement(sourceText, generation, { immediate: true }))
-      .then(finish, () => finish(null));
-  }, AI_VISIBLE_BATCH_GRACE_MS);
-  visibleAiGraceRequests.set(requestKey, entry);
-  return entry.promise;
+  const request = startAiBatchEnhancement(texts, generation, {
+    priority: 'visible',
+    contextTexts: []
+  });
+  if (!request) return null;
+  texts.forEach((text) => pendingRealtimeAiTranslations.delete(getAiRequestKey(text, generation)));
+  Promise.resolve(request).finally(() => {
+    if (generation === trackLoadGeneration) flushRealtimeAiBatch(generation);
+  });
+  return request;
 }
 
-function startAiEnhancement(sourceText, generation = trackLoadGeneration, options = {}) {
+function startAiEnhancement(sourceText, generation = trackLoadGeneration) {
   if (!sourceText || !currentSettings.aiEnabled || !currentSettings.showTrans ||
       generation !== trackLoadGeneration) return null;
+  // Downloaded subtitle tracks always have neighboring cues available. They
+  // must use startAiBatchEnhancement() so an on-demand miss cannot create a
+  // one-cue provider request during warmup or playback.
+  if (trackMode === TRACK_MODE.FILE_WARMING || trackMode === TRACK_MODE.FILE_READY) return null;
   if (isAiTranslationSource(translationSources.get(sourceText))) return null;
   if (sourceText.length > AI_TRANSLATION_MAX_CHARS) return null;
   const requestKey = getAiRequestKey(sourceText, generation);
@@ -2992,33 +3044,19 @@ function startAiEnhancement(sourceText, generation = trackLoadGeneration, option
   if (settledAiTranslations.has(requestKey)) return null;
   if (isAiRetryCoolingDown(requestKey)) return null;
 
-  if (!options.immediate && pendingAiPrefetchJob?.generation === generation &&
+  if (pendingAiPrefetchJob?.generation === generation &&
       pendingAiPrefetchJob.texts.includes(sourceText)) {
-    return waitForAiPrefetchOrPromote(sourceText, generation);
+    // The visible cue is already included in a batch. Elevate that batch
+    // instead of extracting the cue into another one-line provider request.
+    pendingAiPrefetchJob.priority = 'visible';
+    return pendingAiPrefetchJob.promise.then(() =>
+      getAppliedAiResult(sourceText) || { text: '', source: '' }
+    );
   }
 
-  // After the bounded grace period, a still-pending visible cue becomes a
-  // dedicated high-priority request so seeks and cold starts remain responsive.
-  removeFromPendingAiPrefetch(sourceText, generation);
-  let resolveJob;
-  const job = {
-    sourceText,
-    generation,
-    requestKey,
-    promise: new Promise((resolve) => { resolveJob = resolve; }),
-    resolve: (result) => resolveJob(result)
-  };
-  if (!activeVisibleAiJob) return runVisibleAiJob(job);
-
-  // Playback may advance faster than the provider's pacing window. Retain only
-  // the newest visible cue instead of sending every transient cue to Gemini.
-  if (pendingVisibleAiJob) {
-    setAiTranslationState(pendingVisibleAiJob.sourceText, 'standby');
-    pendingVisibleAiJob.resolve({ text: '', source: '' });
-  }
-  pendingVisibleAiJob = job;
+  pendingRealtimeAiTranslations.set(requestKey, { sourceText, generation });
   setAiTranslationState(sourceText, 'standby');
-  return job.promise;
+  return flushRealtimeAiBatch(generation);
 }
 
 async function ensureCueTranslation(sourceText, generation = trackLoadGeneration, options = {}) {
@@ -3028,8 +3066,8 @@ async function ensureCueTranslation(sourceText, generation = trackLoadGeneration
     if (currentSettings.aiEnabled && !isAiTranslationSource(translationSources.get(sourceText))) {
       const canUseAi = !options.skipAi && sourceText.length <= AI_TRANSLATION_MAX_CHARS;
       const aiRequest = canUseAi ? startAiEnhancement(sourceText, generation) : null;
-      if (!currentSettings.aiFallback && canUseAi) {
-        return aiRequest?.then((result) => result?.text || '').catch(() => '') || '';
+      if (!currentSettings.aiFallback && canUseAi && aiRequest) {
+        return aiRequest.then(() => preloadedTranslations.get(sourceText) || '').catch(() => '');
       }
     }
     return cachedTranslation;
@@ -3040,8 +3078,8 @@ async function ensureCueTranslation(sourceText, generation = trackLoadGeneration
   const aiRequest = currentSettings.aiEnabled && !options.skipAi
     ? startAiEnhancement(sourceText, generation)
     : null;
-  if (currentSettings.aiEnabled && !currentSettings.aiFallback && !options.skipAi) {
-    return aiRequest?.then((result) => result?.text || '').catch(() => '') || '';
+  if (currentSettings.aiEnabled && !currentSettings.aiFallback && !options.skipAi && aiRequest) {
+    return aiRequest.then(() => preloadedTranslations.get(sourceText) || '').catch(() => '');
   }
 
   const request = requestTranslation(sourceText).then((result) => {
@@ -3111,29 +3149,28 @@ function startVisibleFileAiWindow(cueIndex, generation = trackLoadGeneration) {
   if (!currentSettings.aiEnabled || !currentSettings.showTrans ||
       generation !== trackLoadGeneration || cueIndex < 0) return null;
   const visibleText = preloadedSentencesList[cueIndex]?.text;
-  const visibleRequest = visibleText
-    ? startAiEnhancement(visibleText, generation)
-    : null;
-
-  // Auto-generated tracks already have a time-based 60-second refill window.
-  // Starting another sliding cue window here would duplicate that scheduler.
-  if (isAutoGenerated) return visibleRequest;
+  const visibleRequestKey = visibleText ? getAiRequestKey(visibleText, generation) : '';
+  const visibleNeedsBatch = Boolean(
+    visibleText &&
+    !isAiTranslationSource(translationSources.get(visibleText)) &&
+    !settledAiTranslations.has(visibleRequestKey) &&
+    !isAiTranslationScheduled(visibleText, generation) &&
+    !isAiRetryCoolingDown(visibleRequestKey)
+  );
 
   const shouldRefreshLookahead = shouldRefreshVisibleFileAiLookahead(
     cueIndex,
     visibleFileAiWindowAnchorCueIndex
   );
-  if (!shouldRefreshLookahead) return visibleRequest;
+  if (!visibleNeedsBatch && (!shouldRefreshLookahead || isAutoGenerated)) return null;
   visibleFileAiWindowAnchorCueIndex = cueIndex;
 
-  // Refill only after half the anchored window has been consumed. The visible
-  // cue shares this prefetch when possible and only becomes a dedicated request
-  // after its bounded grace period; a per-cue sliding window would otherwise
-  // degenerate into one new provider request for every cue.
+  // Put the visible cue at the front of a small high-priority batch. Larger
+  // background batches take over after the first screen has been covered.
   const texts = [];
   const lookaheadEnd = preloadedSentencesList[cueIndex]?.start + AI_TRANSLATION_LOOKAHEAD_SECONDS;
-  for (let index = cueIndex + 1;
-       index < Math.min(cueIndex + 1 + AI_TRANSLATION_BATCH_CUE_LIMIT, preloadedSentencesList.length);
+  for (let index = cueIndex;
+       index < Math.min(cueIndex + AI_TRANSLATION_BATCH_CUE_LIMIT, preloadedSentencesList.length);
        index += 1) {
     if (preloadedSentencesList[index]?.start > lookaheadEnd) break;
     const text = preloadedSentencesList[index]?.text;
@@ -3142,8 +3179,7 @@ function startVisibleFileAiWindow(cueIndex, generation = trackLoadGeneration) {
         queuedAiTranslations.has(getAiRequestKey(text, generation))) continue;
     texts.push(text);
   }
-  const lookaheadRequest = startAiBatchEnhancement(texts, generation);
-  return visibleRequest || lookaheadRequest;
+  return startResponsiveAiBatches(texts, generation);
 }
 
 function renderFileCue() {
@@ -3179,8 +3215,8 @@ function renderFileCue() {
 
   currentCueIndex = nextCueIndex;
   const cue = preloadedSentencesList[nextCueIndex];
-  if (currentSettings.aiEnabled) startVisibleFileAiWindow(nextCueIndex);
   if (isAutoGenerated) refreshAutoTranslationWindow(playbackTime);
+  if (currentSettings.aiEnabled) startVisibleFileAiWindow(nextCueIndex);
   const translation = preloadedTranslations.get(cue.text);
   if (nextCueIndex === renderedFileCueIndex) {
     if (pendingFileCueIndex === nextCueIndex && !translation) return;
@@ -3210,7 +3246,10 @@ function renderFileCue() {
   if (renderedFileCueIndex >= 0 && renderedFileCueIndex !== nextCueIndex) {
     clearSubtitleContent();
   }
-  const translationRequest = ensureCueTranslation(cue.text);
+  // FILE_READY always has neighboring cue context available through
+  // startVisibleFileAiWindow(). Keep this immediate miss path on the standard
+  // provider so it cannot regress into a one-cue AI request.
+  const translationRequest = ensureCueTranslation(cue.text, trackLoadGeneration, { skipAi: true });
   const finishPendingCue = () => {
     if (nextCueIndex !== currentCueIndex || pendingFileCueIndex !== nextCueIndex) return;
     const readyTranslation = preloadedTranslations.get(cue.text);
@@ -3267,8 +3306,8 @@ async function translateBatch(batch, generation, options = {}) {
   // Start the enhancement request immediately. Google remains the first
   // visible provider, while Gemini can finish independently and take over.
   if (currentSettings.aiEnabled && options.enableAi !== false) {
-    startAiBatchEnhancement(batch, generation);
-    if (!currentSettings.aiFallback) {
+    const aiRequest = startAiBatchEnhancement(batch, generation);
+    if (!currentSettings.aiFallback && aiRequest) {
       // Oversized single cues cannot safely enter an AI request. They retain
       // standard translation even in AI-only mode so subtitles never vanish.
       standardBatch = batch.filter((sourceText) => sourceText.length > AI_TRANSLATION_MAX_CHARS);
@@ -3329,17 +3368,31 @@ function getAutoTranslationWindowTexts(playhead) {
   return windowTexts;
 }
 
-async function translateAiBatchItems(texts, contextTexts, generation, allowRetry = true) {
-  if (!texts.length || generation !== trackLoadGeneration) return [];
+async function translateAiBatchItems(
+  texts,
+  contextTexts,
+  generation,
+  allowRetry = true,
+  priority = 'prefetch',
+  allowShortBatch = false
+) {
+  if (!isAiBatchLargeEnough(texts, allowShortBatch) || generation !== trackLoadGeneration) return [];
   texts.forEach((sourceText) => setAiTranslationState(sourceText, 'processing'));
 
   const result = await requestAiTranslation(
     buildAiBatchPayload(texts, contextTexts),
     currentSettings.lang,
-    'prefetch'
-  ).catch(() => ({ text: '', source: '' }));
+    priority,
+    allowShortBatch
+  ).catch((error) => ({ text: '', source: '', error: error?.message || 'request_failed' }));
   if (!result?.text || generation !== trackLoadGeneration || !isAiTranslationSource(result.source)) {
     if (generation === trackLoadGeneration) {
+      console.info('lasDoscas: AI subtitle batch did not produce a usable result', {
+        trackMode,
+        cueCount: texts.length,
+        textWeight: getAiBatchTextWeight(texts),
+        error: result?.error || 'empty_or_invalid_response'
+      });
       texts.forEach((sourceText) => {
         markAiRetryFailure(sourceText, generation);
         setAiTranslationState(sourceText, 'standby');
@@ -3367,13 +3420,16 @@ async function translateAiBatchItems(texts, contextTexts, generation, allowRetry
   });
 
   const missingTexts = texts.filter((sourceText) => !successfulTexts.includes(sourceText));
-  if (allowRetry && missingTexts.length && generation === trackLoadGeneration) {
+  if (allowRetry && isAiBatchLargeEnough(missingTexts, allowShortBatch) &&
+      generation === trackLoadGeneration) {
     const retryTexts = missingTexts.slice(0, AI_BATCH_RETRY_CUE_LIMIT);
     const retrySuccesses = await translateAiBatchItems(
       retryTexts,
       getAiBatchContext(retryTexts),
       generation,
-      false
+      false,
+      priority,
+      allowShortBatch
     );
     successfulTexts.push(...retrySuccesses);
   }
@@ -3385,7 +3441,9 @@ async function translateAiBatchItems(texts, contextTexts, generation, allowRetry
   console.debug('lasDoscas: AI batch mapping', {
     requested: texts.length,
     mapped: successfulTexts.length,
-    retried: allowRetry ? Math.min(missingTexts.length, AI_BATCH_RETRY_CUE_LIMIT) : 0
+    retried: allowRetry && isAiBatchLargeEnough(missingTexts, allowShortBatch)
+      ? Math.min(missingTexts.length, AI_BATCH_RETRY_CUE_LIMIT)
+      : 0
   });
   return successfulTexts;
 }
@@ -3407,7 +3465,10 @@ function runAiPrefetchJob(job) {
   const request = translateAiBatchItems(
     job.texts,
     job.contextTexts,
-    job.generation
+    job.generation,
+    true,
+    job.priority,
+    job.allowShortBatch
   ).catch(() => {
     if (job.generation === trackLoadGeneration) {
       job.texts.forEach((sourceText) => {
@@ -3456,9 +3517,18 @@ function startAiBatchEnhancement(
         activeTexts.has(sourceText)) continue;
     texts.push(sourceText);
   }
-  if (!texts.length) return null;
+  if (!isAiBatchLargeEnough(texts, options.allowShortBatch)) {
+    console.debug('lasDoscas: AI batch waiting for more subtitle context', {
+      trackMode,
+      cueCount: texts.length,
+      textWeight: getAiBatchTextWeight(texts)
+    });
+    texts.forEach((sourceText) => setAiTranslationState(sourceText, 'standby'));
+    return null;
+  }
   if ((activeAiPrefetchJob || activeVisibleAiJob) && pendingAiPrefetchJob &&
       options.preservePending) {
+    if (options.priority === 'visible') pendingAiPrefetchJob.priority = 'visible';
     return pendingAiPrefetchJob.promise;
   }
 
@@ -3467,9 +3537,17 @@ function startAiBatchEnhancement(
     texts,
     generation,
     contextTexts,
+    priority: options.priority === 'visible' ? 'visible' : 'prefetch',
+    allowShortBatch: Boolean(options.allowShortBatch),
     promise: new Promise((resolve) => { resolveJob = resolve; }),
     resolve: (result) => resolveJob(result)
   };
+  console.debug('lasDoscas: AI subtitle batch scheduled', {
+    trackMode,
+    cueCount: texts.length,
+    textWeight: getAiBatchTextWeight(texts),
+    priority: job.priority
+  });
   if (!activeAiPrefetchJob && !activeVisibleAiJob) return runAiPrefetchJob(job);
 
   // Keep only one not-yet-started lookahead job. Callers may preserve the
@@ -3498,24 +3576,22 @@ async function fillAutoTranslationWindow(generation, playhead, windowSequence) {
       ? !isAiTranslationSource(translationSources.get(text)) &&
         !settledAiTranslations.has(getAiRequestKey(text, generation)) &&
         !isAiTranslationScheduled(text, generation)
-      : !preloadedTranslations.has(text)) &&
-    !inflightTranslations.has(getTranslationRequestKey(text, generation))
+      : !preloadedTranslations.has(text) &&
+        !inflightTranslations.has(getTranslationRequestKey(text, generation)))
   );
 
   if (currentSettings.aiEnabled) {
-    // Only the nearest AI batch enters the bounded prefetch scheduler. Sending
-    // the second half of a 24-cue window immediately used to replace the first
-    // pending batch, so playback reached cues 1-12 before AI had touched them.
-    startAiBatchEnhancement(
-      windowTexts.slice(0, AI_TRANSLATION_BATCH_CUE_LIMIT),
-      generation,
-      { preservePending: true }
-    );
+    // Resolve the first screen with a small visible batch, then use the
+    // remaining window as a larger background request for throughput.
+    startResponsiveAiBatches(windowTexts, generation, { preservePending: true });
     for (let index = 0; index < windowTexts.length; index += AI_TRANSLATION_BATCH_CUE_LIMIT) {
       if (generation !== trackLoadGeneration || windowSequence !== autoTranslationWindowSequence ||
           isOrphaned || !currentSettings.enabled) return;
       const batch = windowTexts.slice(index, index + AI_TRANSLATION_BATCH_CUE_LIMIT);
-      const missingStandardTranslations = batch.filter((text) => !preloadedTranslations.has(text));
+      const missingStandardTranslations = batch.filter((text) =>
+        !preloadedTranslations.has(text) &&
+        !inflightTranslations.has(getTranslationRequestKey(text, generation))
+      );
       await translateBatch(missingStandardTranslations, generation, { enableAi: false });
     }
     return;
@@ -3603,12 +3679,33 @@ function getPriorityFileTranslationTexts(playhead = getPlayerVideoElement()?.cur
   return Array.from(new Set(priorityCues.map((cue) => cue.text)));
 }
 
-function startInitialAuthoredFileAiWarmup(generation) {
-  if (isAutoGenerated || !currentSettings.enabled || !currentSettings.aiEnabled ||
+function startResponsiveAiBatches(texts, generation, options = {}) {
+  const visibleCues = texts.slice(0, AI_TRANSLATION_VISIBLE_BATCH_CUE_LIMIT);
+  const backgroundCues = texts.slice(
+    AI_TRANSLATION_VISIBLE_BATCH_CUE_LIMIT,
+    AI_TRANSLATION_VISIBLE_BATCH_CUE_LIMIT + AI_TRANSLATION_BATCH_CUE_LIMIT
+  );
+  const visibleRequest = startAiBatchEnhancement(visibleCues, generation, {
+    priority: 'visible',
+    allowShortBatch: true,
+    preservePending: Boolean(options.preservePending)
+  });
+  const startBackground = () => {
+    if (generation !== trackLoadGeneration || !currentSettings.aiEnabled) return null;
+    return startAiBatchEnhancement(backgroundCues, generation, { priority: 'prefetch' });
+  };
+  if (!visibleRequest) return startBackground();
+  Promise.resolve(visibleRequest).finally(startBackground);
+  return visibleRequest;
+}
+
+function startInitialFileAiWarmup(generation) {
+  if (!currentSettings.enabled || !currentSettings.aiEnabled ||
       !currentSettings.showTrans || generation !== trackLoadGeneration) return null;
-  const initialCues = getPriorityFileTranslationTexts()
-    .slice(0, AI_TRANSLATION_BATCH_CUE_LIMIT);
-  return startAiBatchEnhancement(initialCues, generation);
+  const nearestIndex = Math.max(0, findNextCueIndexAtTime(getPlayerVideoElement()?.currentTime || 0));
+  const priorityTexts = getPriorityFileTranslationTexts();
+  visibleFileAiWindowAnchorCueIndex = nearestIndex;
+  return startResponsiveAiBatches(priorityTexts, generation);
 }
 
 async function preloadTranslations(generation) {
@@ -3632,9 +3729,6 @@ async function preloadTranslations(generation) {
       !inflightTranslations.has(getTranslationRequestKey(text, generation))
     );
     await translateBatch(missingStandardTranslations, generation, { enableAi: false });
-    // Remaining cues are translated on demand by renderFileCue(). Avoid
-    // sending the entire authored subtitle track to the AI at startup.
-    return;
   } else {
     const missingInitialCues = initialCues.filter((text) =>
       !preloadedTranslations.has(text) &&
@@ -3643,7 +3737,10 @@ async function preloadTranslations(generation) {
     await Promise.all(missingInitialCues.map((text) => ensureCueTranslation(text, generation)));
   }
 
-  const preloadStartIndex = 0;
+  // AI enhancement remains windowed, but the inexpensive standard provider
+  // keeps warming the rest of an authored track so future cues can paint both
+  // rows together instead of waiting at the playhead.
+  const preloadStartIndex = currentSettings.aiEnabled ? initialCues.length : 0;
   for (let index = preloadStartIndex; index < sourceSentences.length; index += batchSize) {
     if (generation !== trackLoadGeneration || isOrphaned || !currentSettings.enabled) return;
     const batch = sourceSentences
@@ -3653,7 +3750,7 @@ async function preloadTranslations(generation) {
         !inflightTranslations.has(getTranslationRequestKey(text, generation))
     );
     await translateBatch(batch, generation, {
-      enableAi: currentSettings.aiEnabled
+      enableAi: false
     });
     if (index + batchSize < sourceSentences.length) {
       await new Promise((resolve) => setTimeout(resolve, PRELOAD_BATCH_DELAY_MS));
@@ -3700,7 +3797,12 @@ async function preloadFullTrack(generation, attempt) {
 
   if (!selectedTrack) {
     const hasNativeCaptionDom = Boolean(document.querySelector('.ytp-caption-segment'));
-    const terminalMode = hasNativeCaptionDom ? TRACK_MODE.RETRYABLE_ERROR : TRACK_MODE.NO_CAPTIONS;
+    // When YouTube exposes rendered text but withholds the selected source
+    // track, do not translate an unidentified line or leave an empty wrapper.
+    // This is the common fallback shape for a preselected auto-translation.
+    const terminalMode = hasNativeCaptionDom
+      ? TRACK_MODE.YOUTUBE_AUTO_TRANSLATE
+      : TRACK_MODE.NO_CAPTIONS;
     scheduleTrackRetry(generation, attempt, terminalMode, '播放器尚未提供字幕轨道');
     return;
   }
@@ -3749,9 +3851,9 @@ async function preloadFullTrack(generation, attempt) {
     await loadSubtitleTranslationCache();
     if (generation !== trackLoadGeneration) return;
 
-    // Use the standard-translation warmup time to get the first authored AI
-    // batch in flight. This must not delay FILE_READY or the first subtitle.
-    void startInitialAuthoredFileAiWarmup(generation);
+    // Start AI for both authored and auto-generated files while the fast
+    // standard translation path warms up. This does not delay FILE_READY.
+    void startInitialFileAiWarmup(generation);
 
     let youtubeTranslationApplied = false;
     const applyYouTubeTranslation = (translatedData) => {
@@ -3769,20 +3871,37 @@ async function preloadFullTrack(generation, attempt) {
       return mappedCount;
     };
 
-    const warmTranslationData = await waitForTranslationWarmup(youtubeTranslationPromise);
-    if (generation !== trackLoadGeneration) return;
-    applyYouTubeTranslation(warmTranslationData);
-    await warmInitialFileTranslations(generation);
+    const video = getPlayerVideoElement();
+    const initialCueIndex = findNextCueIndexAtTime(video?.currentTime || 0);
+    const initialCueText = initialCueIndex >= 0 ? cues[initialCueIndex]?.text : '';
+    const initialTranslationReady = Boolean(
+      initialCueText && preloadedTranslations.has(initialCueText)
+    );
+    const standardTranslationWarmup = initialTranslationReady
+      ? Promise.resolve()
+      : warmInitialFileTranslations(generation);
+    const youtubeTranslationWarmup = waitForTranslationWarmup(youtubeTranslationPromise)
+      .then((translatedData) => {
+        if (generation !== trackLoadGeneration) return false;
+        applyYouTubeTranslation(translatedData);
+        return Boolean(initialCueText && preloadedTranslations.has(initialCueText));
+      });
+
+    if (!initialTranslationReady && initialCueText) {
+      await Promise.race([
+        standardTranslationWarmup,
+        youtubeTranslationWarmup.then((mappedInitialCue) =>
+          mappedInitialCue ? undefined : standardTranslationWarmup
+        )
+      ]);
+    }
     if (generation !== trackLoadGeneration) return;
     trackMode = TRACK_MODE.FILE_READY;
     setLiveAsrConfirmed(false);
-    // The track is ready even when the playhead is between cues. Do not leave
-    // the startup banner visible until the first caption becomes active.
-    hideLoadingMessage();
+    // Keep the startup status visible through gaps in the caption timeline.
+    // displayFileCue() clears it atomically when the first real cue is painted.
 
     console.log(`lasDoscas: 已加载 ${cues.length} 条字幕，启用独立时间轴双语渲染。`);
-    const video = getPlayerVideoElement();
-    const initialCueIndex = findNextCueIndexAtTime(video?.currentTime || 0);
     if (initialCueIndex >= 0 && !preloadedTranslations.has(cues[initialCueIndex].text)) {
       ensureCueTranslation(cues[initialCueIndex].text, generation, { skipAi: currentSettings.aiEnabled });
     }

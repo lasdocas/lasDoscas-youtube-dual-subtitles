@@ -64,6 +64,28 @@ test('localized messages fall back to English for unsupported languages', () => 
   );
 });
 
+test('auto-translation warning asks for an original or auto-generated caption track', () => {
+  const messages = loadMessages();
+  const simplifiedChinese = messages.autoTranslateSelectionMessageDict.zh;
+  const english = messages.autoTranslateSelectionMessageDict.en;
+  const spanish = messages.autoTranslateSelectionMessageDict.es;
+
+  assert.match(simplifiedChinese, /检测到 YouTube 自动翻译/);
+  assert.match(simplifiedChinese, /字幕文件/);
+  assert.match(simplifiedChinese, /自动生成/);
+  assert.match(simplifiedChinese, /更准确、及时的翻译/);
+  assert.match(english, /YouTube auto-translation detected/);
+  assert.match(english, /original or auto-generated Subtitle\/CC/);
+  assert.match(english, /more accurate, timely translation/);
+  assert.match(spanish, /traducción automática de YouTube/);
+  assert.match(spanish, /subtítulos originales o generados automáticamente/);
+  assert.match(spanish, /más precisa y oportuna/);
+  assert.deepEqual(
+    Object.keys(messages.autoTranslateSelectionMessageDict).sort(),
+    ['en', 'es', 'zh']
+  );
+});
+
 test('localization catalog exposes immutable top-level dictionaries', () => {
   const messages = loadMessages();
   assert.equal(Object.isFrozen(messages), true);
@@ -92,8 +114,7 @@ test('core status catalogs cover the same normalized locales', () => {
   const expectedLocales = normalizedLocaleKeys(messages.loadingMessageDict);
   for (const name of [
     'youtubeCaptionsDisabledMessageDict',
-    'hintMessageDict',
-    'autoTranslateSelectionMessageDict'
+    'hintMessageDict'
   ]) {
     assert.deepEqual(normalizedLocaleKeys(messages[name]), expectedLocales, name);
   }

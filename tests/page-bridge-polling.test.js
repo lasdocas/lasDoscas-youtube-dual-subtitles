@@ -9,7 +9,12 @@ const bridgeSource = fs.readFileSync(
   'utf8'
 );
 
-function createBridgeHarness({ hidden = false, href = 'https://www.youtube.com/watch?v=abc' } = {}) {
+function createBridgeHarness({
+  hidden = false,
+  href = 'https://www.youtube.com/watch?v=abc',
+  captionTracks: captionTracksOverride = null,
+  resourceEntries = []
+} = {}) {
   const windowListeners = new Map();
   const documentListeners = new Map();
   const postedMessages = [];
@@ -23,16 +28,21 @@ function createBridgeHarness({ hidden = false, href = 'https://www.youtube.com/w
     name: { simpleText: 'English' },
     vssId: '.en'
   };
+  const captionTracks = captionTracksOverride || [selectedTrack];
   let activeTrack = selectedTrack;
+  let translationLanguage = null;
   const moviePlayer = {
     isConnected: true,
     getPlayerResponse: () => ({
       videoDetails: { videoId: 'abc', title: 'Test video' },
       captions: {
-        playerCaptionsTracklistRenderer: { captionTracks: [selectedTrack] }
+        playerCaptionsTracklistRenderer: { captionTracks }
       }
     }),
-    getOption: () => activeTrack
+    getOption: (module, option) => {
+      if (module === 'captions' && option === 'translationLanguage') return translationLanguage;
+      return activeTrack;
+    }
   };
   const ccButton = {
     isConnected: true,
@@ -52,7 +62,15 @@ function createBridgeHarness({ hidden = false, href = 'https://www.youtube.com/w
     }
   };
   const window = {
+    fetch(input) {
+      return Promise.resolve({ ok: true, input });
+    },
     location: new URL(href),
+    performance: {
+      getEntriesByType(type) {
+        return type === 'resource' ? resourceEntries : [];
+      }
+    },
     ytInitialPlayerResponse: null,
     addEventListener(type, listener) {
       windowListeners.set(type, listener);
@@ -82,7 +100,9 @@ function createBridgeHarness({ hidden = false, href = 'https://www.youtube.com/w
     getIntervalCallback: () => intervalCallback,
     getQueryCount: (selector) => queryCounts.get(selector) || 0,
     moviePlayer,
+    requestCaption(url) { return context.window.fetch(url); },
     setActiveTrack(track) { activeTrack = track; },
+    setTranslationLanguage(language) { translationLanguage = language; },
     postedMessages,
     window,
     windowListeners
@@ -96,6 +116,7 @@ test('stale auto-translation metadata does not hide a selected authored track', 
     tlang: 'es',
     translationLanguage: 'es'
   });
+  harness.requestCaption('https://www.youtube.com/api/timedtext?v=abc&lang=en');
   harness.windowListeners.get('message')({
     source: harness.window,
     data: {
@@ -108,6 +129,187 @@ test('stale auto-translation metadata does not hide a selected authored track', 
   const snapshot = harness.postedMessages.at(-1).snapshot;
   assert.equal(snapshot.isAutoTranslated, false);
   assert.equal(snapshot.selectedTrack.languageCode, 'en');
+});
+
+test('embedded translation language detects a preselected YouTube auto-translation', () => {
+  const harness = createBridgeHarness();
+  harness.setActiveTrack({
+    ...harness.moviePlayer.getOption(),
+    translationLanguage: { languageCode: 'ja' }
+  });
+  harness.windowListeners.get('message')({
+    source: harness.window,
+    data: {
+      source: 'lasdoscas-player-bridge-v1',
+      type: 'REQUEST_SNAPSHOT',
+      requestId: 'embedded-preselected-translation'
+    }
+  });
+
+  const snapshot = harness.postedMessages.at(-1).snapshot;
+  assert.equal(snapshot.isAutoTranslated, true);
+  assert.equal(snapshot.autoTranslationLanguageCode, 'ja');
+  assert.match(snapshot.trackKey, /auto-translate:ja/);
+});
+
+test('active target-language track outside the source catalog is auto-translation', () => {
+  const harness = createBridgeHarness();
+  harness.setActiveTrack({
+    baseUrl: 'https://www.youtube.com/api/timedtext?v=abc&lang=zh-Hans',
+    id: 'translated-zh-Hans',
+    language: { languageCode: 'zh-Hans' },
+    name: { simpleText: 'Chinese (Simplified)' }
+  });
+  harness.windowListeners.get('message')({
+    source: harness.window,
+    data: {
+      source: 'lasdoscas-player-bridge-v1',
+      type: 'REQUEST_SNAPSHOT',
+      requestId: 'translated-language'
+    }
+  });
+
+  const snapshot = harness.postedMessages.at(-1).snapshot;
+  assert.equal(snapshot.isAutoTranslated, true);
+  assert.equal(snapshot.autoTranslationLanguageCode, 'zh-Hans');
+  assert.equal(snapshot.selectedTrack.languageCode, 'en');
+});
+
+test('source-language metadata identifies auto-translation without tlang', () => {
+  const harness = createBridgeHarness();
+  harness.setActiveTrack({
+    captionTrackId: 'translated-es',
+    languageCode: 'es',
+    sourceLanguageCode: 'en',
+    name: { simpleText: 'Spanish' }
+  });
+  harness.windowListeners.get('message')({
+    source: harness.window,
+    data: {
+      source: 'lasdoscas-player-bridge-v1',
+      type: 'REQUEST_SNAPSHOT',
+      requestId: 'source-language'
+    }
+  });
+
+  const snapshot = harness.postedMessages.at(-1).snapshot;
+  assert.equal(snapshot.isAutoTranslated, true);
+  assert.equal(snapshot.autoTranslationLanguageCode, 'es');
+});
+
+test('separate YouTube translation language option identifies auto-translation', () => {
+  const harness = createBridgeHarness();
+  harness.setTranslationLanguage({ languageCode: 'ja', languageName: 'Japanese' });
+  harness.windowListeners.get('message')({
+    source: harness.window,
+    data: {
+      source: 'lasdoscas-player-bridge-v1',
+      type: 'REQUEST_SNAPSHOT',
+      requestId: 'separate-translation-language'
+    }
+  });
+
+  const snapshot = harness.postedMessages.at(-1).snapshot;
+  assert.equal(snapshot.isAutoTranslated, true);
+  assert.equal(snapshot.autoTranslationLanguageCode, 'ja');
+  assert.equal(snapshot.selectedTrack.languageCode, 'en');
+  assert.match(snapshot.trackKey, /auto-translate:ja/);
+});
+
+test('translation language remains detectable while YouTube is replacing its active track', () => {
+  const harness = createBridgeHarness();
+  harness.setActiveTrack(null);
+  harness.setTranslationLanguage('ja');
+  harness.windowListeners.get('message')({
+    source: harness.window,
+    data: {
+      source: 'lasdoscas-player-bridge-v1',
+      type: 'REQUEST_SNAPSHOT',
+      requestId: 'translation-language-during-track-swap'
+    }
+  });
+
+  const snapshot = harness.postedMessages.at(-1).snapshot;
+  assert.equal(snapshot.isAutoTranslated, true);
+  assert.equal(snapshot.autoTranslationLanguageCode, 'ja');
+});
+
+test('native timedtext request preserves preselected auto-translation for the first snapshot', () => {
+  const harness = createBridgeHarness();
+  harness.requestCaption(
+    'https://www.youtube.com/api/timedtext?v=abc&lang=en&tlang=ja&fmt=json3'
+  );
+  harness.windowListeners.get('message')({
+    source: harness.window,
+    data: {
+      source: 'lasdoscas-player-bridge-v1',
+      type: 'REQUEST_SNAPSHOT',
+      requestId: 'preselected-auto-translation'
+    }
+  });
+
+  const snapshot = harness.postedMessages.at(-1).snapshot;
+  assert.equal(snapshot.isAutoTranslated, true);
+  assert.equal(snapshot.autoTranslationLanguageCode, 'ja');
+  assert.match(snapshot.trackKey, /auto-translate:ja/);
+});
+
+test('caption request evidence from another video is ignored', () => {
+  const harness = createBridgeHarness();
+  harness.requestCaption(
+    'https://www.youtube.com/api/timedtext?v=old-video&lang=en&tlang=ja'
+  );
+  harness.windowListeners.get('message')({
+    source: harness.window,
+    data: {
+      source: 'lasdoscas-player-bridge-v1',
+      type: 'REQUEST_SNAPSHOT',
+      requestId: 'other-video-auto-translation'
+    }
+  });
+
+  const snapshot = harness.postedMessages.at(-1).snapshot;
+  assert.equal(snapshot.isAutoTranslated, false);
+});
+
+test('first snapshot recovers preselected auto-translation from resource timing', () => {
+  const harness = createBridgeHarness({
+    resourceEntries: [
+      { name: 'https://www.youtube.com/api/timedtext?v=abc&lang=en&tlang=ja' }
+    ]
+  });
+  harness.windowListeners.get('message')({
+    source: harness.window,
+    data: {
+      source: 'lasdoscas-player-bridge-v1',
+      type: 'REQUEST_SNAPSHOT',
+      requestId: 'resource-timing-auto-translation'
+    }
+  });
+
+  const snapshot = harness.postedMessages.at(-1).snapshot;
+  assert.equal(snapshot.isAutoTranslated, true);
+  assert.equal(snapshot.autoTranslationLanguageCode, 'ja');
+});
+
+test('latest resource timing caption request determines translation state', () => {
+  const harness = createBridgeHarness({
+    resourceEntries: [
+      { name: 'https://www.youtube.com/api/timedtext?v=abc&lang=en&tlang=ja' },
+      { name: 'https://www.youtube.com/api/timedtext?v=abc&lang=en' }
+    ]
+  });
+  harness.windowListeners.get('message')({
+    source: harness.window,
+    data: {
+      source: 'lasdoscas-player-bridge-v1',
+      type: 'REQUEST_SNAPSHOT',
+      requestId: 'latest-resource-caption-state'
+    }
+  });
+
+  const snapshot = harness.postedMessages.at(-1).snapshot;
+  assert.equal(snapshot.isAutoTranslated, false);
 });
 
 test('periodic polling pauses while the page is hidden', () => {

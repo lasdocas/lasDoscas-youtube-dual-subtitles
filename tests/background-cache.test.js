@@ -34,7 +34,7 @@ test('AI batch prompt treats context as read-only and requires compact ids', () 
   assert.match(backgroundSource, /\{"i":\[\[id,"translation"\],\.\.\.\]\}/);
   assert.match(backgroundSource, /Return every input id exactly once and in the original order/);
   assert.match(backgroundSource, /console\.debug\('lasDoscas: AI request usage'/);
-  assert.match(backgroundSource, /batchSize, \.\.\.usage/);
+  assert.match(backgroundSource, /requestKind:[\s\S]*batchSize,[\s\S]*sourceChars,[\s\S]*payloadChars/);
 });
 
 test('Gemini fallback candidates include the broadly available 2.5 Flash model', () => {
@@ -127,10 +127,10 @@ function createBackgroundHarness() {
     cacheApi: context.cacheApi,
     queueApi: context.queueApi,
     getFetchCount: () => fetchCount,
-    send(request) {
+    send(request, sender = {}) {
       return new Promise((resolve) => {
         assert.ok(messageListener, 'background message listener was not installed');
-        messageListener(request, {}, resolve);
+        messageListener(request, sender, resolve);
       });
     },
     setNow(value) {
@@ -303,6 +303,100 @@ test('OpenAI-compatible batch requests enable JSON mode and a bounded larger out
   assert.equal(response.source, 'groq');
   await harness.send({ action: 'translate_ai', text: batchText, sourceLang: 'en', lang: 'es' });
   assert.equal(harness.getFetchCount(), 2, 'validated per-cue storage, not raw batch JSON, owns caching');
+});
+
+test('subtitle AI requests are rejected before fetch unless the batch is substantial', async () => {
+  const harness = createBackgroundHarness();
+  harness.setSessionStorage({ aiGeminiApiKey: 'session-key' });
+  const tabSender = { tab: { id: 7 } };
+
+  const direct = await harness.send({
+    action: 'translate_ai',
+    text: 'Short subtitle',
+    sourceLang: 'en',
+    lang: 'es'
+  }, tabSender);
+  assert.equal(direct.error, 'ai_batch_required');
+
+  const smallBatch = 'LASDOSCAS_BATCH_V2\n' + JSON.stringify({
+    c: [],
+    i: [[0, 'First'], [1, 'Second']]
+  });
+  const small = await harness.send({
+    action: 'translate_ai',
+    text: smallBatch,
+    sourceLang: 'en',
+    lang: 'es'
+  }, tabSender);
+  assert.equal(small.error, 'ai_batch_too_small');
+  assert.equal(harness.getFetchCount(), 0);
+
+  const items = [
+    [0, `first-authored-subtitle-${'x'.repeat(105)}`],
+    [1, `second-authored-subtitle-${'y'.repeat(105)}`]
+  ];
+  const validBatch = 'LASDOSCAS_BATCH_V2\n' + JSON.stringify({ c: [], i: items });
+  harness.setFetchHandler(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      candidates: [{ content: { parts: [{ text: JSON.stringify({
+        i: items.map(([index]) => [index, `translated-${index}`])
+      }) }] } }]
+    })
+  }));
+  const valid = await harness.send({
+    action: 'translate_ai',
+    text: validBatch,
+    sourceLang: 'en',
+    lang: 'es',
+    requestKind: 'subtitle'
+  }, tabSender);
+  assert.match(valid.translation, /^\{"i":/);
+  assert.equal(harness.getFetchCount(), 1);
+});
+
+test('visible subtitle batches may trade token efficiency for startup latency', async () => {
+  const harness = createBackgroundHarness();
+  harness.setSessionStorage({ aiGeminiApiKey: 'session-key' });
+  harness.setFetchHandler(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      candidates: [{ content: { parts: [{ text: '{"i":[[0,"Uno"],[1,"Dos"]]}' }] } }]
+    })
+  }));
+  const smallBatch = 'LASDOSCAS_BATCH_V2\n' + JSON.stringify({
+    c: [],
+    i: [[0, 'First'], [1, 'Second']]
+  });
+  const singleCue = 'LASDOSCAS_BATCH_V2\n' + JSON.stringify({
+    c: [],
+    i: [[0, 'Only one']]
+  });
+
+  const rejected = await harness.send({
+    action: 'translate_ai',
+    text: singleCue,
+    sourceLang: 'en',
+    lang: 'es',
+    priority: 'visible',
+    requestKind: 'subtitle_visible'
+  }, { tab: { id: 7 } });
+  assert.equal(rejected.error, 'ai_batch_too_small');
+  assert.equal(harness.getFetchCount(), 0);
+
+  const response = await harness.send({
+    action: 'translate_ai',
+    text: smallBatch,
+    sourceLang: 'en',
+    lang: 'es',
+    priority: 'visible',
+    requestKind: 'subtitle_visible'
+  }, { tab: { id: 7 } });
+
+  assert.equal(response.translation, '{"i":[[0,"Uno"],[1,"Dos"]]}');
+  assert.equal(harness.getFetchCount(), 1);
 });
 
 test('OpenRouter key test reports invalid credentials without using Gemini', async () => {
